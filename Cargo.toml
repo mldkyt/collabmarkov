@@ -1,0 +1,19 @@
+[package]
+name = "collabmarkov"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest = { version = "0.12", features = [
+    "blocking",
+    "json",
+    "native-tls-vendored",
+] }
+tokio = { version = "1.45.1", features = ["full"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+configparser = "3.1.0"
+markov = "1.1.0"
+filetime = "0.2.25"
+serial_test = "3.2.0"
+regex = "1.11.1"
