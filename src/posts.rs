@@ -236,7 +236,7 @@ pub fn get_followers_ids() -> Vec<String> {
     req.iter().for_each(|f| {
         let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
 
-        if !regex.is_match(f.follower.description.clone().unwrap().as_str()) {
+        if !regex.is_match(f.follower.description.clone().unwrap_or("".to_string()).as_str()) {
             ids.push(f.follower_id.clone())
         } else {
             println!("skipping {}: nomarkov", f.follower_id);
@@ -263,7 +263,7 @@ pub fn get_followers_ids() -> Vec<String> {
         req.iter().for_each(|f| {
             let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
 
-            if !regex.is_match(f.follower.description.clone().unwrap().as_str()) {
+            if !regex.is_match(f.follower.description.clone().unwrap_or("".to_string()).as_str()) {
                 ids.push(f.follower_id.clone())
             } else {
                 println!("skipping {}: nomarkov", f.follower_id);
