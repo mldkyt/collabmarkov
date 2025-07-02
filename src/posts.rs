@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration, vec};
+
 use filetime::FileTime;
 use regex::Regex;
 use reqwest::StatusCode;
@@ -73,13 +75,13 @@ fn write_file(posts: &Vec<Post>) {
     serde_json::to_writer_pretty(writer, &posts).unwrap();
 }
 
-fn get_posts_until_last(user_id: String, token: String, last_id: String) -> Vec<Post> {
+fn get_posts_until_last(user_id: String, last_id: String) -> Vec<Post> {
     println!("{} Getting posts until last id: {}", user_id, last_id);
     let instance = read_instance();
 
-    let mut out = reqwest::blocking::Client::new()
+    let out = reqwest::blocking::Client::new()
         .post(format!("https://{}/api/users/notes", instance))
-        .header("Authorization", format!("Bearer {}", token))
+        .bearer_auth(read_posting_token())
         .json(&json!({
             "userId": user_id,
             "limit": 100,
@@ -88,14 +90,21 @@ fn get_posts_until_last(user_id: String, token: String, last_id: String) -> Vec<
             "withBots": false,
         }))
         .send()
-        .unwrap()
-        .json::<Vec<Post>>()
+        .unwrap();
+
+    if out.status() == StatusCode::TOO_MANY_REQUESTS {
+        println!("too many requests for {} retrying...", user_id);
+        sleep(Duration::from_secs(2));
+        return get_posts_until_last(user_id.clone(), last_id.clone());
+    }
+
+    let mut out = out.json::<Vec<Post>>()
         .unwrap();
 
     match out.last() {
         Some(last_el) => {
             let last_id = last_el.id.clone();
-            let mut posts = get_posts_until_last(user_id, token, last_id);
+            let mut posts = get_posts_until_last(user_id, last_id);
 
             out.append(&mut posts);
         }
@@ -107,18 +116,15 @@ fn get_posts_until_last(user_id: String, token: String, last_id: String) -> Vec<
     out
 }
 
-pub fn get_posts(user_id: String, token: String) -> Vec<Post> {
+pub fn get_posts(user_id: String) -> Vec<Post> {
     println!("Getting posts for {}", user_id);
-    if let Some(posts) = read_existing_file() {
-        return posts;
-    }
 
     let mut posts = Vec::new();
     let instance = read_instance();
 
-    reqwest::blocking::Client::new()
+    let req = reqwest::blocking::Client::new()
         .post(format!("https://{}/api/users/notes", instance))
-        .header("Authorization", format!("Bearer {}", token))
+        .bearer_auth(read_posting_token())
         .json(&json!({
             "userId": user_id,
             "limit": 100,
@@ -126,11 +132,17 @@ pub fn get_posts(user_id: String, token: String) -> Vec<Post> {
             "withBots": false,
         }))
         .send()
-        .unwrap()
-        .json::<Vec<Post>>()
-        .unwrap()
-        .iter()
-        .for_each(|post| {
+        .unwrap();
+
+    if req.status() == StatusCode::TOO_MANY_REQUESTS {
+        println!("too many requests for {} retrying...", user_id);
+        sleep(Duration::from_secs(2));
+        return get_posts(user_id.clone());
+    }
+
+
+    match req.json::<Vec<Post>>() {
+        Ok(v) => v.iter().for_each(|post| {
             posts.push(Post {
                 id: post.id.clone(),
                 text: post.text.clone(),
@@ -142,17 +154,19 @@ pub fn get_posts(user_id: String, token: String) -> Vec<Post> {
                     host: post.user.host.clone(),
                 },
             });
-        });
+        }),
+        Err(_) => return vec![]
+    }
 
     if let Some(last_post) = posts.last() {
         let last_id = last_post.id.clone();
-        let mut posts_2 = get_posts_until_last(user_id.clone(), token, last_id);
+        let mut posts_2 = get_posts_until_last(user_id.clone(), last_id);
         posts.append(&mut posts_2);
     }
 
     write_file(&posts);
 
-    println!("Fetched {} posts from {}", &posts.len(), user_id);
+    println!("Fetched {} posts for {}", &posts.len(), user_id);
 
     posts
 }
@@ -163,7 +177,7 @@ fn get_all_posts_until_last(user_ids: Vec<String>) -> Vec<Post> {
 
     for i in user_ids {
         let token = read_posting_token();
-        let mut fetched_posts = get_posts(i, token);
+        let mut fetched_posts = get_posts(i);
         posts.append(&mut fetched_posts);
     }
 
@@ -191,7 +205,7 @@ pub fn get_followers_ids() -> Vec<String> {
     loop {
         let mut last_id = ids.last().unwrap().clone();
 
-        println!("{}", last_id);
+        println!("fetched {} followers so far, last id is {}", ids.len(), last_id);
 
         let req= reqwest::blocking::Client::new()
             .post(format!("https://{}/api/users/followers", read_instance()))
@@ -215,6 +229,44 @@ pub fn get_followers_ids() -> Vec<String> {
     }
 
     ids
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CreatedNote {
+    #[serde(rename = "createdNote")]
+    created_note: Post,
+}
+
+pub fn create_post(text: String) {
+    let instance = read_instance();
+    let posting_token = read_posting_token();
+
+    let sanitized_mentions = sanitize_mentions(text.clone());
+    let sanitized_formatting = sanitize_formatting(sanitized_mentions.clone());
+
+    let visibility = read_visibility();
+
+    let cw_config = read_cw_config();
+
+    let mut json = json!({
+        "text": sanitized_formatting,
+        "visibility": visibility
+    });
+
+    if cw_config.enable {
+        json["cw"] = json!(cw_config.cw);
+    }
+
+    let res = reqwest::blocking::Client::new()
+        .post(format!("https://{}/api/notes/create", instance))
+        .header("Authorization", format!("Bearer {}", posting_token.trim()))
+        .json(&json)
+        .send()
+        .unwrap()
+        .json::<CreatedNote>()
+        .unwrap();
+
+    println!("https://{}/notes/{}", instance, res.created_note.id);
 }
 
 pub fn sanitize_mentions(text: String) -> String {
