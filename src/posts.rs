@@ -6,7 +6,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::conf::{read_cw_config, read_instance, read_poster_id, read_posting_token, read_visibility};
+use crate::{conf::{read_cw_config, read_instance, read_poster_id, read_posting_token, read_visibility}, main};
 
 #[derive(Serialize, Deserialize)]
 pub struct User {
@@ -14,6 +14,17 @@ pub struct User {
     pub name: Option<String>,
     pub username: Option<String>,
     pub host: Option<String>,
+    pub description: Option<String>
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct UserRelation {
+    #[serde(rename = "isFollowing")]
+    pub is_following: bool,
+    #[serde(rename = "isFollowed")]
+    pub is_followed: bool,
+    #[serde(rename = "hasPendingFollowRequestFromYou")]
+    pub has_pending_follow_request_from_you: bool
 }
 
 #[derive(Serialize, Deserialize)]
@@ -36,43 +47,6 @@ pub struct Post {
 #[derive(Serialize, Deserialize)]
 struct Posts {
     posts: Vec<Post>,
-}
-
-fn read_existing_file() -> Option<Vec<Post>> {
-    let path = "./posts.json";
-
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(_) => return None,
-    };
-
-    if !metadata.is_file() {
-        println!("File is not a file, deleting");
-        std::fs::remove_file(path).unwrap();
-        return None;
-    }
-
-    let modified = FileTime::from_last_modification_time(&metadata);
-    let now = FileTime::now();
-
-    if now.seconds() - modified.seconds() > 24 * 3600 * 7 {
-        println!("File is older than a week, deleting");
-        std::fs::remove_file(path).unwrap();
-        return None;
-    }
-
-    let file = std::fs::File::open(path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    let posts: Vec<Post> = serde_json::from_reader(reader).unwrap();
-
-    Some(posts)
-}
-
-fn write_file(posts: &Vec<Post>) {
-    let path = "./posts.json";
-    let file = std::fs::File::create(path).unwrap();
-    let writer = std::io::BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &posts).unwrap();
 }
 
 fn get_posts_until_last(user_id: String, last_id: String) -> Vec<Post> {
@@ -116,6 +90,80 @@ fn get_posts_until_last(user_id: String, last_id: String) -> Vec<Post> {
     out
 }
 
+pub fn control_follows_for_user(user_id: &String) {
+    // Fetch information about user
+    println!("checking if {} is followed", user_id);
+
+    let instance = read_instance();
+    let token = read_posting_token();
+
+    let req = reqwest::blocking::Client::new()
+        .post(format!("https://{}/api/users/relation", instance))
+        .bearer_auth(&token)
+        .json(&json!({
+            "userId": user_id
+        }))
+        .send();
+
+    let req = match req {
+        Ok(a) => a,
+        Err(b) => {
+            println!("Failed to fetch user information for {}", user_id);
+            println!("{:?}", b);
+            return;
+        }
+    };
+
+    if req.status() == StatusCode::TOO_MANY_REQUESTS {
+        println!("too many requests, retrying for {}...", user_id);
+        sleep(Duration::from_secs(1));
+        control_follows_for_user(user_id);
+        return;
+    }
+
+    let req = match req.json::<Vec<UserRelation>>() {
+        Ok(v) => v,
+        Err(_) => {
+            println!("Failed to parse user data for {}", user_id);
+            return;
+        }
+    };
+
+    let req = match req.get(0) {
+        Some(a) => a,
+        None => {
+            println!("No relations for {}", user_id);
+            return;
+        }
+    };
+
+    if req.is_following {
+        println!("{} is already followed", user_id);
+    }
+
+    if req.has_pending_follow_request_from_you {
+        println!("{} is pending a follow request", user_id);
+    }
+
+    if req.is_followed && !req.is_following && !req.has_pending_follow_request_from_you {
+        // Follow
+        println!("following {}", user_id);
+
+        let req = reqwest::blocking::Client::new()
+            .post(format!("https://{}/api/following/create", instance))
+            .bearer_auth(token)
+            .json(&json!({
+                "userId": user_id
+            }))
+            .send();
+
+        match req {
+            Ok(_) => println!("Successfully followed {}", user_id),
+            Err(_) => println!("Error following {}", user_id)
+        }
+    }
+}
+
 pub fn get_posts(user_id: String) -> Vec<Post> {
     println!("Getting posts for {}", user_id);
 
@@ -152,6 +200,7 @@ pub fn get_posts(user_id: String) -> Vec<Post> {
                     name: post.user.name.clone(),
                     username: post.user.username.clone(),
                     host: post.user.host.clone(),
+                    description: post.user.description.clone()
                 },
             });
         }),
@@ -164,22 +213,7 @@ pub fn get_posts(user_id: String) -> Vec<Post> {
         posts.append(&mut posts_2);
     }
 
-    write_file(&posts);
-
     println!("Fetched {} posts for {}", &posts.len(), user_id);
-
-    posts
-}
-
-
-fn get_all_posts_until_last(user_ids: Vec<String>) -> Vec<Post> {
-    let mut posts: Vec<Post> = vec![];
-
-    for i in user_ids {
-        let token = read_posting_token();
-        let mut fetched_posts = get_posts(i);
-        posts.append(&mut fetched_posts);
-    }
 
     posts
 }
@@ -200,7 +234,15 @@ pub fn get_followers_ids() -> Vec<String> {
         .json::<Vec<UserFollow>>()
         .unwrap();
 
-    req.iter().for_each(|f| ids.push(f.follower_id.clone()));
+    req.iter().for_each(|f| {
+        let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
+
+        if !regex.is_match(f.follower.description.clone().unwrap().as_str()) {
+            ids.push(f.follower_id.clone())
+        } else {
+            println!("skipping {}: nomarkov", f.follower_id);
+        }
+    });
 
     loop {
         let mut last_id = ids.last().unwrap().clone();
@@ -219,7 +261,15 @@ pub fn get_followers_ids() -> Vec<String> {
             .json::<Vec<UserFollow>>()
             .ok().expect("Failed to parse response");
 
-        req.iter().for_each(|f| ids.push(f.follower_id.clone()));
+        req.iter().for_each(|f| {
+            let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
+
+            if !regex.is_match(f.follower.description.clone().unwrap().as_str()) {
+                ids.push(f.follower_id.clone())
+            } else {
+                println!("skipping {}: nomarkov", f.follower_id);
+            }
+        });
 
         if let Some(last_user) = req.last() {
             last_id = last_user.follower_id.clone()
@@ -259,7 +309,7 @@ pub fn create_post(text: String) {
 
     let res = reqwest::blocking::Client::new()
         .post(format!("https://{}/api/notes/create", instance))
-        .header("Authorization", format!("Bearer {}", posting_token.trim()))
+        .bearer_auth(posting_token) 
         .json(&json)
         .send()
         .unwrap()

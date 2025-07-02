@@ -3,7 +3,7 @@ use std::ops::Index;
 
 use markov::Chain;
 
-use crate::posts::{get_followers_ids, get_posts, Post};
+use crate::posts::{control_follows_for_user, get_followers_ids, get_posts, Post};
 
 
 mod conf;
@@ -15,6 +15,10 @@ This program comes with ABSOLUTELY NO WARRANTY.
 This is free software, and you are welcome to redistribute it under certain conditions. Please check LICENSE for more infomation.");
 
     let followers_ids = get_followers_ids();
+
+    for i in &followers_ids {
+        control_follows_for_user(i);
+    }
 
     let mut all_posts: Vec<Post> = vec![];
 
