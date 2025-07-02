@@ -1,12 +1,11 @@
 use std::{thread::sleep, time::Duration, vec};
 
-use filetime::FileTime;
 use regex::Regex;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{conf::{read_cw_config, read_instance, read_poster_id, read_posting_token, read_visibility}, main};
+use crate::conf::{read_cw_config, read_instance, read_poster_id, read_posting_token, read_visibility};
 
 #[derive(Serialize, Deserialize)]
 pub struct User {
