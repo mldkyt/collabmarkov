@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::max;
 
 use configparser::ini::Ini;
 
@@ -63,7 +63,7 @@ pub fn read_multiplier() -> i64 {
 
     match mult {
         Ok(Some(v)) => {
-            return min(1, v);
+            return max(1, v);
         }
         Ok(None) => return 1,
         Err(_) => return 1,
@@ -88,6 +88,47 @@ pub fn read_poster_id() -> String {
     let id = config.get("posting", "id").unwrap();
 
     id
+}
+
+pub fn read_disable_sanitize_mfm() -> bool {
+    let config = read_config();
+    let sanitize_mfm = config
+        .getboolcoerce("sanitize", "mfm")
+        .unwrap_or(Some(true))
+        .unwrap_or(true);
+
+    !sanitize_mfm
+}
+
+pub fn read_disable_sanitize_mentions() -> bool {
+    let config = read_config();
+    let sanitize_mentions = config
+        .getboolcoerce("sanitize", "mentions")
+        .unwrap_or(Some(true))
+        .unwrap_or(true);
+
+    !sanitize_mentions
+}
+
+pub fn read_disable_sanitize_hashtags() -> bool {
+    let config = read_config();
+    let sanitize_hashtags = config
+        .getboolcoerce("sanitize", "hashtags")
+        .unwrap_or(Some(false))
+        .unwrap_or(false);
+
+    !sanitize_hashtags
+}
+
+pub fn read_disable_mfm() -> bool {
+    let config = read_config();
+
+    let disable_mfm = config
+        .getboolcoerce("sanitize", "disable-mfm")
+        .unwrap_or(Some(false))
+        .unwrap_or(false);
+
+    !disable_mfm
 }
 
 #[cfg(test)]
@@ -115,5 +156,17 @@ mod tests {
 
         let poster_id = read_poster_id();
         assert_eq!(poster_id, "123456abcd");
+
+        let disable_sanitize_mfm = read_disable_sanitize_mfm();
+        assert_eq!(disable_sanitize_mfm, false);
+
+        let disable_sanitize_mentions = read_disable_sanitize_mentions();
+        assert_eq!(disable_sanitize_mentions, false);
+
+        let disable_sanitize_hashtags = read_disable_sanitize_hashtags();
+        assert_eq!(disable_sanitize_hashtags, true);
+
+        let disable_mfm = read_disable_mfm();
+        assert_eq!(disable_mfm, false);
     }
 }

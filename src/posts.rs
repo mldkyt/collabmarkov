@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::conf::{
-    read_cw_config, read_instance, read_poster_id, read_posting_token, read_visibility,
+    read_cw_config, read_disable_mfm, read_disable_sanitize_hashtags,
+    read_disable_sanitize_mentions, read_disable_sanitize_mfm, read_instance, read_poster_id,
+    read_posting_token, read_visibility,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -306,15 +308,18 @@ pub fn create_post(text: String) {
     let instance = read_instance();
     let posting_token = read_posting_token();
 
-    let sanitized_mentions = sanitize_mentions(text.clone());
-    let sanitized_formatting = sanitize_formatting(sanitized_mentions.clone());
+    let mut sanitized = sanitize_mentions(text.clone());
+    sanitized = sanitize_mentions(sanitized.clone());
+    sanitized = sanitize_formatting(sanitized.clone());
+    sanitized = sanitize_hashtags(sanitized.clone());
+    sanitized = remove_mfm(sanitized.clone());
 
     let visibility = read_visibility();
 
     let cw_config = read_cw_config();
 
     let mut json = json!({
-        "text": sanitized_formatting,
+        "text": sanitized,
         "visibility": visibility
     });
 
@@ -334,12 +339,44 @@ pub fn create_post(text: String) {
     println!("https://{}/notes/{}", instance, res.created_note.id);
 }
 
+pub fn remove_mfm(text: String) -> String {
+    if read_disable_mfm() {
+        return text;
+    }
+
+    let re = Regex::new(r"\$\[\w+ (.*?)\]").unwrap();
+    let mut text_process = text;
+
+    for _ in 0..20 {
+        text_process = re.replace_all(&text_process, "$1").to_string();
+    }
+
+    text_process
+}
+
 pub fn sanitize_mentions(text: String) -> String {
+    if read_disable_sanitize_mentions() {
+        return text;
+    }
+
     let re = Regex::new(r"(@\w+)(@[\w.]+)?").unwrap();
     re.replace_all(&text, "<plain>$1$2</plain>").to_string()
 }
 
+pub fn sanitize_hashtags(text: String) -> String {
+    if read_disable_sanitize_hashtags() {
+        return text;
+    }
+
+    let re = Regex::new(r"(#\w+)").unwrap();
+    re.replace_all(&text, "<plain>$1</plain>").to_string()
+}
+
 pub fn sanitize_formatting(text: String) -> String {
+    if read_disable_sanitize_mfm() {
+        return text;
+    }
+
     let mut result = String::new();
     let mut chars = text.chars().peekable();
 
@@ -470,4 +507,80 @@ pub fn sanitize_formatting(text: String) -> String {
     }
 
     result
+}
+
+#[cfg(test)]
+#[serial_test::serial]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_disable_mfm_basic() {
+        let text = "$[x4 Haiiii]".to_string();
+        let expected_text = "Haiiii".to_string();
+
+        let sanitized_text = remove_mfm(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
+
+    #[test]
+    pub fn test_disable_mfm_nested() {
+        let text = "$[sparkle $[x4 haiii]]".to_string();
+        let expected_text = "haiii".to_string();
+
+        let sanitized_text = remove_mfm(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
+
+    #[test]
+    pub fn test_sanitize_mfm() {
+        let text = "$[x4 haiii".to_string();
+        let expected_text = "$[x4 haiii]".to_string();
+
+        let sanitized_text = sanitize_formatting(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
+
+    #[test]
+    pub fn test_sanitize_mfm_double() {
+        let text = "$[sparkle $[x4 haiii".to_string();
+        let expected_text = "$[sparkle $[x4 haiii]]".to_string();
+
+        let sanitized_text = sanitize_formatting(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
+
+    #[test]
+    pub fn test_sanitize_mention_local() {
+        let text = "@Lunya".to_string();
+        let expected_text = "<plain>@Lunya</plain>".to_string();
+
+        let sanitized_text = sanitize_mentions(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
+
+    #[test]
+    pub fn test_sanitize_mention_remote() {
+        let text = "@Lunya@fedi.lunya.pet".to_string();
+        let expected_text = "<plain>@Lunya@fedi.lunya.pet</plain>".to_string();
+
+        let sanitized_text = sanitize_mentions(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
+
+    #[test]
+    pub fn test_sanitize_hashtags() {
+        let text = "#collabmarkov".to_string();
+        let expected_text = "<plain>#collabmarkov</plain>".to_string();
+
+        let sanitized_text = sanitize_hashtags(text);
+
+        assert_eq!(sanitized_text, expected_text);
+    }
 }
