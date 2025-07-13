@@ -1,11 +1,14 @@
-
+use std::process::exit;
 
 use markov::Chain;
 
-use crate::posts::{control_follows_for_user, get_followers_ids, get_posts, Post};
-
+use crate::{
+    filters::{check_post, get_filter_configuration},
+    posts::{Post, User, control_follows_for_user, get_followers_ids, get_posts},
+};
 
 mod conf;
+mod filters;
 mod posts;
 
 fn main() {
@@ -23,7 +26,12 @@ This is free software, and you are welcome to redistribute it under certain cond
 
     for i in 0..followers_ids.len() {
         let follower_i = followers_ids[i].clone();
-        println!("processing {} ({}/{})", follower_i, i + 1, followers_ids.len());
+        println!(
+            "processing {} ({}/{})",
+            follower_i,
+            i + 1,
+            followers_ids.len()
+        );
 
         let mut posts = get_posts(follower_i);
         all_posts.append(&mut posts);
@@ -31,8 +39,14 @@ This is free software, and you are welcome to redistribute it under certain cond
 
     let mut chain = Chain::new();
 
+    let filter_config = get_filter_configuration();
+
     for post in all_posts {
         if post.text.is_none() {
+            continue;
+        }
+
+        if !check_post(&filter_config, &post) {
             continue;
         }
 

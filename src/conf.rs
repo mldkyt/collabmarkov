@@ -4,14 +4,14 @@ use configparser::ini::Ini;
 
 pub struct ReturnedCWConfiguration {
     pub enable: bool,
-    pub cw: String
+    pub cw: String,
 }
 
 fn read_config() -> Ini {
     // Read from file
     let mut config = Ini::new();
     config.load("./config.ini").unwrap();
-    
+
     return config;
 }
 
@@ -38,19 +38,19 @@ pub fn read_cw_config() -> ReturnedCWConfiguration {
             if v == "yes" || v == "on" || v == "true" {
                 return ReturnedCWConfiguration {
                     enable: true,
-                    cw: cw.unwrap_or("Markov Generated Post".to_string())
+                    cw: cw.unwrap_or("Markov Generated Post".to_string()),
                 };
             } else {
                 return ReturnedCWConfiguration {
                     enable: false,
-                    cw: cw.unwrap_or("Markov Generated Post".to_string())
+                    cw: cw.unwrap_or("Markov Generated Post".to_string()),
                 };
             }
         }
         None => {
             return ReturnedCWConfiguration {
                 enable: false,
-                cw: cw.unwrap_or("Markov Generated Post".to_string())
+                cw: cw.unwrap_or("Markov Generated Post".to_string()),
             };
         }
     }
@@ -66,14 +66,15 @@ pub fn read_multiplier() -> i64 {
             return min(1, v);
         }
         Ok(None) => return 1,
-        Err(_) => return 1
+        Err(_) => return 1,
     }
-
 }
 
 pub fn read_visibility() -> String {
     let config = read_config();
-    let visibility = config.get("posting", "visibility").unwrap_or("public".to_string());
+    let visibility = config
+        .get("posting", "visibility")
+        .unwrap_or("public".to_string());
 
     if visibility == "public" || visibility == "home" || visibility == "followers" {
         return visibility;
@@ -96,13 +97,12 @@ mod tests {
 
     #[test]
     fn test_read_config() {
-
         let posting_token = read_posting_token();
         assert_eq!(posting_token, "token");
 
         let instance = read_instance();
         assert_eq!(instance, "misskey.io");
-        
+
         let cw_config = read_cw_config();
         assert_eq!(cw_config.enable, true);
         assert_eq!(cw_config.cw, "Markov Generated Post");
@@ -115,6 +115,5 @@ mod tests {
 
         let poster_id = read_poster_id();
         assert_eq!(poster_id, "123456abcd");
-
     }
 }

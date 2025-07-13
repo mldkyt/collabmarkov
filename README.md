@@ -21,4 +21,11 @@ You can register an account on git.lunya.pet if you want to open a pull request 
 4. Test your changes on an account
 5. Open a pull request
 
+## Configuration
 
+1. Copy `config.example.ini` to `config.ini`.
+2. In the `[posting]` section, set `id`, `token`, `instance` at minimum.
+
+If you want the bot to have content warnings, you can enable them under the `[cw]` section. Set `enable` to `on` and `cw` to your content warning.
+
+You can also configure a blocklist in the bot. Under the `[blocklist]` section, set a comma separate list of words under `keywords` or `hashtags`. Hashtags do **NOT** contain the `#`
