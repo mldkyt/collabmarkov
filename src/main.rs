@@ -1,10 +1,9 @@
-use std::process::exit;
 
 use markov::Chain;
 
 use crate::{
     filters::{check_post, get_filter_configuration},
-    posts::{Post, User, control_follows_for_user, get_followers_ids, get_posts},
+    posts::{Post, control_follows_for_user, get_followers_ids, get_posts},
 };
 
 mod conf;
