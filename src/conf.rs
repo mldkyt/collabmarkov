@@ -128,7 +128,7 @@ pub fn read_disable_mfm() -> bool {
         .unwrap_or(Some(false))
         .unwrap_or(false);
 
-    !disable_mfm
+    disable_mfm
 }
 
 #[cfg(test)]

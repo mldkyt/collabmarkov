@@ -13,9 +13,20 @@ pub struct HashtagFilterConfiguration {
     hashtags: Vec<String>,
 }
 
+pub struct CWConfigruration {
+    enabled: bool,
+}
+
+pub struct VisibilityConfiguration {
+    enabled: bool,
+    visibility: String,
+}
+
 pub struct FilterConfiguration {
     keywords: KeywordFilterConfiguration,
     hashtags: HashtagFilterConfiguration,
+    cw: CWConfigruration,
+    visibility: VisibilityConfiguration,
 }
 
 pub fn get_filter_configuration() -> FilterConfiguration {
@@ -38,6 +49,17 @@ pub fn get_filter_configuration() -> FilterConfiguration {
         .map(|f| f.trim().to_string())
         .collect();
 
+    // CW configuration
+    let cw = config
+        .getboolcoerce("blocklist", "cw")
+        .unwrap_or(Some(false))
+        .unwrap_or(false);
+
+    // Visibility configuration
+    let visibility = config
+        .get("blocklist", "visibility-below")
+        .unwrap_or("home".to_string());
+
     FilterConfiguration {
         keywords: KeywordFilterConfiguration {
             enabled: keywords.len() != 0,
@@ -46,6 +68,11 @@ pub fn get_filter_configuration() -> FilterConfiguration {
         hashtags: HashtagFilterConfiguration {
             enabled: hashtags.len() != 0,
             hashtags: hashtags,
+        },
+        cw: CWConfigruration { enabled: cw },
+        visibility: VisibilityConfiguration {
+            enabled: visibility != "public",
+            visibility: visibility,
         },
     }
 }
@@ -88,10 +115,36 @@ fn check_post_keywords(keyword_configuration: &KeywordFilterConfiguration, post:
     true
 }
 
+pub fn check_exclude_below_visiblity(config: &VisibilityConfiguration, post: &Post) -> bool {
+    if !config.enabled {
+        return true;
+    }
+
+    match &post.visibility {
+        Some(post_visibility) => match post_visibility.as_str() {
+            "public" => return true,                         // keep any public posts
+            "home" => return &config.visibility != "public", // remove home posts if the configuration is for public
+            "followers" => return &config.visibility != "public" && &config.visibility != "home", // remove followers only posts if the configuration is below public or below home
+            _ => return true, // keep any other visibility posts
+        },
+        None => return true, // if the post doesn't have a visibility for some reason, keep it as well
+    }
+}
+
+pub fn check_exclude_with_cw(config: &CWConfigruration, post: &Post) -> bool {
+    if !config.enabled {
+        return true; // keep cw posts when the cw filter is disabled
+    }
+
+    post.cw.clone().unwrap_or("".to_string()).trim().len() == 0 // keep cw posts if there's no cw or the cw is empty
+}
+
 // return true when post is fine
 pub fn check_post(filter_config: &FilterConfiguration, post: &Post) -> bool {
     check_post_hashtags(&filter_config.hashtags, post)
         && check_post_keywords(&filter_config.keywords, post)
+        && check_exclude_below_visiblity(&filter_config.visibility, &post)
+        && check_exclude_with_cw(&filter_config.cw, &post)
 }
 
 #[cfg(test)]
@@ -127,6 +180,7 @@ mod tests {
                 name: None,
                 username: None,
             },
+            visibility: Some("public".to_string()),
         };
 
         assert_eq!(check_post(&config, &post_1), false);
@@ -144,6 +198,7 @@ mod tests {
                 name: None,
                 username: None,
             },
+            visibility: Some("public".to_string()),
         };
 
         assert_eq!(check_post(&config, &post_2), false);
@@ -161,10 +216,135 @@ mod tests {
                 name: None,
                 username: None,
             },
+            visibility: Some("public".to_string()),
         };
 
         assert_eq!(check_post(&config, &post_3), true);
         assert_eq!(check_post_keywords(&config.keywords, &post_3), true);
         assert_eq!(check_post_hashtags(&config.hashtags, &post_3), true);
+    }
+
+    #[test]
+    pub fn test_exclude_public_post() {
+        let config = VisibilityConfiguration {
+            enabled: true,
+            visibility: "public".to_string(),
+        };
+
+        let post = Post {
+            cw: None,
+            id: "a".to_string(),
+            text: Some("b".to_string()),
+            user: User {
+                description: None,
+                host: None,
+                id: "a".to_string(),
+                name: None,
+                username: None,
+            },
+            visibility: Some("public".to_string()),
+        };
+
+        let check_status = check_exclude_below_visiblity(&config, &post);
+
+        assert_eq!(check_status, true);
+    }
+
+    #[test]
+    pub fn test_exclude_home_post() {
+        let config = VisibilityConfiguration {
+            enabled: true,
+            visibility: "public".to_string(),
+        };
+
+        let post = Post {
+            cw: None,
+            id: "a".to_string(),
+            text: Some("b".to_string()),
+            user: User {
+                description: None,
+                host: None,
+                id: "a".to_string(),
+                name: None,
+                username: None,
+            },
+            visibility: Some("home".to_string()),
+        };
+
+        let check_status = check_exclude_below_visiblity(&config, &post);
+
+        assert_eq!(check_status, false);
+    }
+
+    #[test]
+    pub fn test_exclude_followers_post() {
+        let config = VisibilityConfiguration {
+            enabled: true,
+            visibility: "public".to_string(),
+        };
+
+        let post = Post {
+            cw: None,
+            id: "a".to_string(),
+            text: Some("b".to_string()),
+            user: User {
+                description: None,
+                host: None,
+                id: "a".to_string(),
+                name: None,
+                username: None,
+            },
+            visibility: Some("followers".to_string()),
+        };
+
+        let check_status = check_exclude_below_visiblity(&config, &post);
+
+        assert_eq!(check_status, false);
+    }
+
+    #[test]
+    pub fn test_exclude_with_cw() {
+        let configuration = CWConfigruration { enabled: true };
+
+        let post = Post {
+            cw: Some("c".to_string()),
+            id: "a".to_string(),
+            text: Some("b".to_string()),
+            user: User {
+                description: None,
+                host: None,
+                id: "a".to_string(),
+                name: None,
+                username: None,
+            },
+            visibility: Some("followers".to_string()),
+        };
+
+        let check_status = check_exclude_with_cw(&configuration, &post);
+
+        assert_eq!(check_status, false);
+    }
+
+    #[test]
+    pub fn test_exclude_without_cw() {
+        let configuration = CWConfigruration { enabled: true };
+
+        let post = Post {
+            cw: None,
+            id: "a".to_string(),
+            text: Some("b".to_string()),
+            user: User {
+                description: None,
+                host: None,
+                id: "a".to_string(),
+                name: None,
+                username: None,
+            },
+            visibility: Some("followers".to_string()),
+        };
+
+        let check_status = check_exclude_with_cw(&configuration, &post);
+
+        assert_eq!(check_status, true);
     }
 }

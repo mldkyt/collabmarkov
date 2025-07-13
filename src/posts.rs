@@ -45,6 +45,7 @@ pub struct Post {
     pub text: Option<String>,
     pub cw: Option<String>,
     pub user: User,
+    pub visibility: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -201,6 +202,7 @@ pub fn get_posts(user_id: String) -> Vec<Post> {
                     host: post.user.host.clone(),
                     description: post.user.description.clone(),
                 },
+                visibility: post.visibility.clone(),
             });
         }),
         Err(_) => return vec![],
@@ -340,7 +342,7 @@ pub fn create_post(text: String) {
 }
 
 pub fn remove_mfm(text: String) -> String {
-    if read_disable_mfm() {
+    if !read_disable_mfm() {
         return text;
     }
 

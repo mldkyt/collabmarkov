@@ -30,6 +30,6 @@ If you want the bot to have content warnings, you can enable them under the `[cw
 
 You can also configure a blocklist in the bot. Under the `[blocklist]` section, set a comma separate list of words under `keywords` or `hashtags`. Hashtags do **NOT** contain the `#`
 
-Under the `[sanitize]` section, you can configure post processing of Markov text. By default, mentions are made to not mention and all MFM is closed off. However, if you want to change some of these settings, change `mfm` under this section to false to disable fixing of MFM, `mentions` to false to allow mentions, `hashtags` to true to sanitize hashtags and `disable-mfm` to true to disable MFM altogether.
+Under the `[sanitize]` section, you can configure post processing of Markov text. By default, mentions are made to not mention and all MFM is closed off. However, if you want to change some of these settings, change `mfm` under this section to false to disable fixing of MFM, `mentions` to false to allow mentions, `hashtags` to true to sanitize hashtags and `disable-mfm` to true to disable MFM altogether. Setting `cw` to true will filter out any posts with a CW and setting `visibility-below` to any of `public`, `home` or `followers` will exclude any posts below that visibility. For example setting it to `public` will exclude any posts that are posted to only `home`.
 
 > [!warning] If you want the Remove MFM option to work, please leave sanitize MFM enabled too. It relies on all MFM to be closed.
