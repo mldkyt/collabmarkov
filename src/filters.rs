@@ -71,7 +71,7 @@ pub fn get_filter_configuration() -> FilterConfiguration {
         },
         cw: CWConfigruration { enabled: cw },
         visibility: VisibilityConfiguration {
-            enabled: visibility != "public",
+            enabled: visibility != "followers",
             visibility: visibility,
         },
     }
