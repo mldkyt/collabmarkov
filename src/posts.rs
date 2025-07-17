@@ -311,7 +311,6 @@ pub fn create_post(text: String) {
     let posting_token = read_posting_token();
 
     let mut sanitized = sanitize_mentions(text.clone());
-    sanitized = sanitize_mentions(sanitized.clone());
     sanitized = sanitize_formatting(sanitized.clone());
     sanitized = sanitize_hashtags(sanitized.clone());
     sanitized = remove_mfm(sanitized.clone());
