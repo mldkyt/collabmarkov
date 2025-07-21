@@ -36,6 +36,9 @@ This is free software, and you are welcome to redistribute it under certain cond
         all_posts.append(&mut posts);
     }
 
+    let mut total_corpus_length = 0;
+    let mut total_post_count = 0;
+
     let mut chain = Chain::new();
 
     let filter_config = get_filter_configuration();
@@ -49,8 +52,14 @@ This is free software, and you are welcome to redistribute it under certain cond
             continue;
         }
 
+        total_corpus_length += post.text.clone().unwrap().len();
+        total_post_count += 1;
         chain.feed_str(post.text.unwrap().as_str());
     }
+
+    println!("total users: {}", followers_ids.len());
+    println!("total posts: {}", total_post_count);
+    println!("total corpus length: {}", total_corpus_length);
 
     let mut str = String::new();
 
