@@ -32,6 +32,7 @@ pub struct UserRelation {
 
 #[derive(Serialize, Deserialize)]
 pub struct UserFollow {
+    pub id: String,
     #[serde(rename = "followeeId")]
     pub followee_id: String,
     #[serde(rename = "followerId")]
@@ -76,7 +77,23 @@ fn get_posts_until_last(user_id: String, last_id: String) -> Vec<Post> {
         return get_posts_until_last(user_id.clone(), last_id.clone());
     }
 
-    let mut out = out.json::<Vec<Post>>().unwrap();
+    let text = match out.text() {
+        Ok(txt) => txt,
+        Err(error) => {
+            println!("{} failed to get text: {}", &user_id, error);
+
+            String::from("")
+        }
+    };
+
+    let mut out: Vec<Post> = match serde_json::from_str(text.as_str()) {
+        Ok(out) => out,
+        Err(error) => {
+            println!("{} failed to parse json: {}", &user_id, error);
+            println!("input string: {}", text);
+            vec![]
+        }
+    };
 
     match out.last() {
         Some(last_el) => {
@@ -220,7 +237,7 @@ pub fn get_posts(user_id: String) -> Vec<Post> {
 }
 
 pub fn get_followers_ids() -> Vec<String> {
-    let mut ids = vec![];
+    let mut ids: Vec<UserFollow> = vec![];
 
     let markov_bot_id = read_poster_id();
 
@@ -235,69 +252,75 @@ pub fn get_followers_ids() -> Vec<String> {
         .json::<Vec<UserFollow>>()
         .unwrap();
 
-    req.iter().for_each(|f| {
-        let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
+    for i in req {
+        ids.push(i);
+    }
 
-        if !regex.is_match(
-            f.follower
-                .description
-                .clone()
-                .unwrap_or("".to_string())
-                .as_str(),
-        ) {
-            ids.push(f.follower_id.clone())
-        } else {
-            println!("skipping {}: nomarkov", f.follower_id);
-        }
-    });
-
+    let mut last_id = ids.last().unwrap();
+    let mut end_loop = false;
     loop {
-        let mut last_id = ids.last().unwrap().clone();
 
         println!(
-            "fetched {} followers so far, last id is {}",
+            "fetched {} followers so far, last id is \"{}\"",
             ids.len(),
-            last_id
+            last_id.id
         );
 
         let req = reqwest::blocking::Client::new()
             .post(format!("https://{}/api/users/followers", read_instance()))
             .json(&json!({
                 "userId": markov_bot_id,
-                "untilId": last_id,
+                "untilId": last_id.id,
                 "limit": 100
             }))
-            .send()
-            .ok()
-            .expect("Failed to fetch")
-            .json::<Vec<UserFollow>>()
-            .ok()
-            .expect("Failed to parse response");
+            .send();
 
-        req.iter().for_each(|f| {
-            let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
-
-            if !regex.is_match(
-                f.follower
-                    .description
-                    .clone()
-                    .unwrap_or("".to_string())
-                    .as_str(),
-            ) {
-                ids.push(f.follower_id.clone())
-            } else {
-                println!("skipping {}: nomarkov", f.follower_id);
+        let req = match req {
+            Ok(a) => a,
+            Err(b) => {
+                panic!("request failed: {:?}", b);
             }
+        };
+
+        let req = req.text().unwrap_or_else(|b| {
+            println!("failed to read response: {:?}", b);
+            end_loop = true;
+            String::from("")
         });
 
-        if let Some(last_user) = req.last() {
-            last_id = last_user.follower_id.clone()
+        let req = serde_json::from_str::<Vec<UserFollow>>(&req).unwrap_or_else(|b| {
+            println!("failed to parse json: {:?}", b);
+            println!("original JSON was: {:?}", req);
+            end_loop = true;
+            vec![]
+        });
+
+        for i in req {
+            ids.push(i);
+        }
+
+        if let Some(last_user) = ids.last() {
+            last_id = last_user
         } else {
+            break;
+        }
+
+        if end_loop {
             break;
         }
     }
 
-    ids
+    let mut ids_filtered: Vec<String> = vec![];
+
+    for i in ids {
+        let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
+
+        if !regex.is_match(i.follower.description.clone().unwrap_or(String::from("")).as_str()) {
+            ids_filtered.push(i.follower_id.clone());
+        }
+    }
+
+    ids_filtered
 }
 
 #[derive(Serialize, Deserialize)]
