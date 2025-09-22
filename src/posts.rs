@@ -68,8 +68,12 @@ fn get_posts_until_last(user_id: String, last_id: String) -> Vec<Post> {
             "withRenotes": false,
             "withBots": false,
         }))
-        .send()
-        .unwrap();
+        .send();
+
+    let out = match out {
+        Ok(a) => a,
+        Err(_) => return vec![],
+    };
 
     if out.status() == StatusCode::TOO_MANY_REQUESTS {
         println!("too many requests for {} retrying...", user_id);
@@ -197,8 +201,12 @@ pub fn get_posts(user_id: String) -> Vec<Post> {
             "withRenotes": false,
             "withBots": false,
         }))
-        .send()
-        .unwrap();
+        .send();
+
+    let req = match req {
+        Ok(x) => x,
+        Err(_) => return vec![],
+    };
 
     if req.status() == StatusCode::TOO_MANY_REQUESTS {
         println!("too many requests for {} retrying...", user_id);
@@ -259,7 +267,6 @@ pub fn get_followers_ids() -> Vec<String> {
     let mut last_id = ids.last().unwrap();
     let mut end_loop = false;
     loop {
-
         println!(
             "fetched {} followers so far, last id is \"{}\"",
             ids.len(),
@@ -315,7 +322,13 @@ pub fn get_followers_ids() -> Vec<String> {
     for i in ids {
         let regex = Regex::new("#[Nn]o[Mm]arkov").unwrap();
 
-        if !regex.is_match(i.follower.description.clone().unwrap_or(String::from("")).as_str()) {
+        if !regex.is_match(
+            i.follower
+                .description
+                .clone()
+                .unwrap_or(String::from(""))
+                .as_str(),
+        ) {
             ids_filtered.push(i.follower_id.clone());
         }
     }
