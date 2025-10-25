@@ -1,0 +1,11 @@
+[project]
+name = "collabmarkov"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "Mastodon.py>=2.1.4",
+    "python-dotenv>=1.1.1",
+    "beautifulsoup4>=4.14.2",
+    "markovify>=0.9.4"
+]
