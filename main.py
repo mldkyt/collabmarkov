@@ -146,10 +146,10 @@ markov.compile(inplace=True)
 output = markov.make_sentence()
 
 if SANITIZE_MENTIONS:
-    output = re.sub("@(\w+)", "@ \1", output) # breaks all mentions, both local and remote
+    output = re.sub("@(\S)", "@ \1", output) # breaks all mentions, both local and remote
 
 if SANITIZE_HASHTAGS:
-    output = re.sub("#(\w+)", "# \1", output) # breaks all hashtags
+    output = re.sub("@(\S)", "# \1", output) # breaks all hashtags
 
 if DEBUG:
     print(output)
