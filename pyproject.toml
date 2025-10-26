@@ -7,5 +7,6 @@ dependencies = [
     "Mastodon.py>=2.1.4",
     "python-dotenv>=1.1.1",
     "beautifulsoup4>=4.14.2",
-    "markovify>=0.9.4"
+    "markovify>=0.9.4",
+    "sqlalchemy>=2.0.44"
 ]
