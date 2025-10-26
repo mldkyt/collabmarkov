@@ -1,5 +1,7 @@
 import os.path
+import re
 from os import getenv
+from time import sleep
 
 import markovify
 from bs4 import BeautifulSoup
@@ -17,6 +19,10 @@ FILTER_KEYWORDS = [i for i in getenv("FILTER_KEYWORDS", "").split(",") if len(i.
 FILTER_CW = getenv("FILTER_CW", "0") == "1"
 FILTER_VISIBILITY = getenv("FILTER_VISIBILITY", "public")
 
+SANITIZE_MENTIONS = getenv("SANITIZE_MENTIONS", "1") == "1"
+SANITIZE_HASHTAGS = getenv("SANITIZE_HASHTAGS", "1") == "1"
+
+DEBUG = getenv("DEBUG", "0") == "1"
 
 if not os.path.exists("data"):
     os.mkdir("data")
@@ -58,26 +64,55 @@ me = mastodon.me()
 
 for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
     print(i.display_name)
-    mastodon.account_follow(i)
+
+    rel = mastodon.account_relationships(i)[0]
+
+    if not rel.following:
+        while True:
+            try:
+                mastodon.account_follow(i, reblogs=False)
+                sleep(5)
+                break
+            except Exception as e:
+                print(f"failed to follow {i.acct}: {str(e)}")
+                pass
 
     with engine.begin() as c:
-        for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
-            a = c.execute(
-                select(posts_table.c.id)
+        try:
+            for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
+                a = c.execute(
+                    select(posts_table.c.id)
                     .where((posts_table.c.id == str(j.id)))
-            ).fetchone()
-            if a is not None:
-                break
+                ).fetchone()
+                if a is not None:
+                    break
 
-            soup = BeautifulSoup(j.content)
-            text = soup.get_text()
+                soup = BeautifulSoup(j.content)
+                text = soup.get_text()
 
-            has_cw = len(j.spoiler_text) > 0
+                has_cw = len(j.spoiler_text) > 0
 
-            c.execute(
-                insert(posts_table)
+                c.execute(
+                    insert(posts_table)
                     .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility)
-            )
+                )
+        except Exception as e:
+            print(f"failed to query posts for {i.acct}: {str(e)}")
+            pass
+
+    sleep(3)
+
+for i in mastodon.pagination_iterator(mastodon.account_following(me)):
+    rel = mastodon.account_relationships(i)[0]
+
+    if not rel.followed_by and rel.following:
+        try:
+            mastodon.account_unfollow(i) # this is not as important as following users
+            # so we can safely unfollow a user on the second hour
+            sleep(5)
+        except Exception as e:
+            print(f"failed to unfollow {i.acct}: {str(e)}")
+            pass
 
 posts = []
 
@@ -108,4 +143,15 @@ posts = "\n".join(posts)
 markov = markovify.NewlineText(posts)
 markov.compile(inplace=True)
 
-print(markov.make_sentence())
+output = markov.make_sentence()
+
+if SANITIZE_MENTIONS:
+    output = re.sub("@(\w+)", "@ \1", output) # breaks all mentions, both local and remote
+
+if SANITIZE_HASHTAGS:
+    output = re.sub("#(\w+)", "# \1", output) # breaks all hashtags
+
+if DEBUG:
+    print(output)
+else:
+    mastodon.toot(output)
