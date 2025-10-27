@@ -75,6 +75,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                 break
             except Exception as e:
                 print(f"failed to follow {i.acct}: {str(e)}")
+                sleep(10)
                 pass
 
     with engine.begin() as c:
@@ -98,6 +99,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                 )
         except Exception as e:
             print(f"failed to query posts for {i.acct}: {str(e)}")
+            sleep(10)
             pass
 
     sleep(3)
@@ -112,6 +114,7 @@ for i in mastodon.pagination_iterator(mastodon.account_following(me)):
             sleep(5)
         except Exception as e:
             print(f"failed to unfollow {i.acct}: {str(e)}")
+            sleep(10)
             pass
 
 posts = []
