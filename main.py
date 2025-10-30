@@ -22,6 +22,9 @@ FILTER_VISIBILITY = getenv("FILTER_VISIBILITY", "public")
 SANITIZE_MENTIONS = getenv("SANITIZE_MENTIONS", "1") == "1"
 SANITIZE_HASHTAGS = getenv("SANITIZE_HASHTAGS", "1") == "1"
 
+REMOVE_MENTIONS = getenv("REMOVE_MENTIONS", "0") == "1"
+REMOVE_HASHTAGS = getenv("REMOVE_HASHTAGS", "0") == "1"
+
 DEBUG = getenv("DEBUG", "0") == "1"
 
 if not os.path.exists("data"):
@@ -153,9 +156,13 @@ output = markov.make_sentence()
 
 if SANITIZE_MENTIONS:
     output = re.sub(r"@(\S)", r"@ \1", output) # breaks all mentions, both local and remote
+elif REMOVE_MENTIONS:
+    output = re.sub(r"@[a-zA-Z.\-_]+", "", output) # removes mentions
 
 if SANITIZE_HASHTAGS:
     output = re.sub(r"@(\S)", r"# \1", output) # breaks all hashtags
+elif REMOVE_HASHTAGS:
+    output = re.sub(r"#\w+", "", output) # removes hashtags
 
 if DEBUG:
     print(output)
