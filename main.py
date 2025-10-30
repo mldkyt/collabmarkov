@@ -65,6 +65,9 @@ me = mastodon.me()
 for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
     print(i.display_name)
 
+    if '#nomarkov' in i.note.lower():
+        continue
+
     rel = mastodon.account_relationships(i)[0]
 
     if not rel.following:
