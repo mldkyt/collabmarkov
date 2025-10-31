@@ -1,10 +1,11 @@
 import os.path
 import re
+import typing
 from os import getenv
 from time import sleep
 
 import markovify
-from bs4 import BeautifulSoup
+import bs4
 from dotenv import load_dotenv
 from mastodon import Mastodon
 from sqlalchemy import create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN
@@ -26,6 +27,26 @@ REMOVE_MENTIONS = getenv("REMOVE_MENTIONS", "0") == "1"
 REMOVE_HASHTAGS = getenv("REMOVE_HASHTAGS", "0") == "1"
 
 DEBUG = getenv("DEBUG", "0") == "1"
+
+# borrowed from https://stackoverflow.com/questions/30337528/make-beautifulsoup-handle-line-breaks-as-a-browser-would
+def get_text(tag: bs4.Tag) -> str:
+    _inline_elements = {"a","span","em","strong","u","i","font","mark","label",
+    "s","sub","sup","tt","bdo","button","cite","del","b","a","font",}
+
+    def _get_text(tag: bs4.Tag) -> typing.Generator:
+        for child in tag.children:
+            if isinstance(child, bs4.Tag):
+                # if the tag is a block type tag then yield new lines before after
+                is_block_element = child.name not in _inline_elements
+                if is_block_element:
+                    yield "\n"
+                yield from ["\n"] if child.name == "br" else _get_text(child)
+                if is_block_element:
+                    yield "\n"
+            elif isinstance(child, bs4.NavigableString):
+                yield child.string
+
+    return "".join(_get_text(tag))
 
 if not os.path.exists("data"):
     os.mkdir("data")
@@ -94,8 +115,8 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                 if a is not None:
                     break
 
-                soup = BeautifulSoup(j.content)
-                text = soup.get_text()
+                soup = bs4.BeautifulSoup(j.content)
+                text = get_text(soup)
 
                 has_cw = len(j.spoiler_text) > 0
 
