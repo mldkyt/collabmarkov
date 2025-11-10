@@ -2,23 +2,18 @@ import os.path
 import re
 import typing
 from os import getenv
-from time import sleep
 
-import markovify
 import bs4
+import markovify
 from dotenv import load_dotenv
 from mastodon import Mastodon
-from sqlalchemy import create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN
+from sqlalchemy import select, insert, delete
+
+from database import engine, posts_table, get_setting
 
 load_dotenv()
 
-USERNAME = getenv("USERNAME")
-PASSWORD = getenv("PASSWORD")
-INSTANCE = getenv("INSTANCE")
-
 FILTER_KEYWORDS = [i for i in getenv("FILTER_KEYWORDS", "").split(",") if len(i.strip()) > 0]
-FILTER_CW = getenv("FILTER_CW", "0") == "1"
-FILTER_VISIBILITY = getenv("FILTER_VISIBILITY", "public")
 
 SANITIZE_MENTIONS = getenv("SANITIZE_MENTIONS", "1") == "1"
 SANITIZE_HASHTAGS = getenv("SANITIZE_HASHTAGS", "1") == "1"
@@ -51,38 +46,7 @@ def get_text(tag: bs4.Tag) -> str:
 if not os.path.exists("data"):
     os.mkdir("data")
 
-if not os.path.exists("data/pytooter_clientcred.secret"):
-    Mastodon.create_app(
-        'collabmarkov',
-        api_base_url=f'https://{INSTANCE}',
-        to_file='data/pytooter_clientcred.secret'
-    )
-
-if not os.path.exists("data/pytooter_usercred.secret"):
-    mastodon = Mastodon(client_id='data/pytooter_clientcred.secret', api_base_url=f"https://{INSTANCE}")
-
-    mastodon.log_in(
-        USERNAME,
-        PASSWORD,
-        to_file="data/pytooter_usercred.secret"
-    )
-else:
-    mastodon = Mastodon(access_token='data/pytooter_usercred.secret', api_base_url=f"https://{INSTANCE}")
-
-engine = create_engine("sqlite:///data/collabmarkov.db", echo=True)
-
-md_obj = MetaData()
-
-posts_table = Table(
-    "posts",
-    md_obj,
-    Column("id", VARCHAR, primary_key=True),
-    Column("text", VARCHAR),
-    Column("has_cw", BOOLEAN),
-    Column("visibility", VARCHAR)
-)
-
-md_obj.create_all(engine, checkfirst=True)
+mastodon = Mastodon(access_token='data/pytooter_usercred.secret')
 
 me = mastodon.me()
 
@@ -98,11 +62,14 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
         while True:
             try:
                 mastodon.account_follow(i, reblogs=False)
-                sleep(5)
+                mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
+                                     f"This bot will now use your posts for the corpus. "
+                                     f"**Only posts that are public and don't have CW are used.** "
+                                     f"The behaviour of this can be changed by replying to this post with `help`.",
+                                     visibility='direct', content_type='text/markdown')
                 break
             except Exception as e:
                 print(f"failed to follow {i.acct}: {str(e)}")
-                sleep(10)
                 pass
 
     with engine.begin() as c:
@@ -122,14 +89,11 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
 
                 c.execute(
                     insert(posts_table)
-                    .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility)
+                    .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility, author=i.acct)
                 )
         except Exception as e:
             print(f"failed to query posts for {i.acct}: {str(e)}")
-            sleep(10)
             pass
-
-    sleep(3)
 
 for i in mastodon.pagination_iterator(mastodon.account_following(me)):
     rel = mastodon.account_relationships(i)[0]
@@ -138,28 +102,32 @@ for i in mastodon.pagination_iterator(mastodon.account_following(me)):
         try:
             mastodon.account_unfollow(i) # this is not as important as following users
             # so we can safely unfollow a user on the second hour
-            sleep(5)
+
+            with engine.begin() as c:
+                c.execute(
+                    delete(posts_table)
+                    .where((posts_table.c.author == i.acct))
+                )
+
         except Exception as e:
             print(f"failed to unfollow {i.acct}: {str(e)}")
-            sleep(10)
             pass
 
 posts = []
 
 with engine.begin() as c:
     a = c.execute(
-        select(posts_table.c.text, posts_table.c.has_cw, posts_table.c.visibility)
-    )
+        select(posts_table.c.text, posts_table.c.has_cw, posts_table.c.visibility, posts_table.c.author)
+    ).all()
 
     for i in a:
-        if FILTER_CW == "1" and i[1]:
+        if get_setting(c, i[3], "cw", "0") == "0" and i[1]:
             continue
 
-        if FILTER_VISIBILITY == "public" and i[2] not in ["public"]:
+        vis = get_setting(c, i[3], "unlisted", "0")
+        if vis == "0" and i[2] != "public":
             continue
-        if FILTER_VISIBILITY == "unlisted" and i[2] not in ["public", "unlisted"]:
-            continue
-        if FILTER_VISIBILITY == "private" and i[2] not in ["public", "unlisted", "private"]:
+        elif vis == "1" and i[2] not in ["public", "unlisted"]:
             continue
 
         for j in FILTER_KEYWORDS:
@@ -168,12 +136,18 @@ with engine.begin() as c:
 
         posts.append(i[0])
 
+if len(posts) == 0:
+    print("No posts")
+    exit(0)
+
 posts = "\n".join(posts)
 
 markov = markovify.NewlineText(posts)
 markov.compile(inplace=True)
 
-output = markov.make_sentence()
+output = None
+while output is None:
+    output = markov.make_sentence()
 
 if SANITIZE_MENTIONS:
     output = re.sub(r"@(\S)", r"@ \1", output) # breaks all mentions, both local and remote
