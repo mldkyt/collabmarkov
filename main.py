@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from mastodon import Mastodon
 from sqlalchemy import select, insert, delete
 
-from database import engine, posts_table, get_setting
+from database import engine, posts_table, get_setting, follows_table
 
 load_dotenv()
 
@@ -56,23 +56,27 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
     if '#nomarkov' in i.note.lower():
         continue
 
-    rel = mastodon.account_relationships(i)[0]
-
-    if not rel.following:
-        while True:
-            try:
-                mastodon.account_follow(i, reblogs=False)
-                mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
-                                     f"This bot will now use your posts for the corpus. "
-                                     f"**Only posts that are public and don't have CW are used.** "
-                                     f"The behaviour of this can be changed by replying to this post with `help`.",
-                                     visibility='direct', content_type='text/markdown')
-                break
-            except Exception as e:
-                print(f"failed to follow {i.acct}: {str(e)}")
-                pass
-
     with engine.begin() as c:
+        rel = mastodon.account_relationships(i)[0]
+
+        if not rel.following:
+            while True:
+                try:
+                    mastodon.account_follow(i, reblogs=False)
+                    c.execute(
+                        insert(follows_table)
+                        .values(acct=i.acct)
+                    )
+                    mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
+                                         f"This bot will now use your posts for the corpus. "
+                                         f"**Only posts that are public and don't have CW are used.** "
+                                         f"The behaviour of this can be changed by replying to this post with `help`.",
+                                         visibility='direct')
+                    break
+                except Exception as e:
+                    print(f"failed to follow {i.acct}: {str(e)}")
+                    pass
+
         try:
             for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
                 a = c.execute(
@@ -95,23 +99,33 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
             print(f"failed to query posts for {i.acct}: {str(e)}")
             pass
 
-for i in mastodon.pagination_iterator(mastodon.account_following(me)):
-    rel = mastodon.account_relationships(i)[0]
+with engine.begin() as c:
+    a = c.execute(
+        select(follows_table.c.acct)
+    ).all()
 
-    if not rel.followed_by and rel.following:
-        try:
-            mastodon.account_unfollow(i) # this is not as important as following users
-            # so we can safely unfollow a user on the second hour
+    for i in a:
+        rel = mastodon.account_relationships(i[0])[0]
 
-            with engine.begin() as c:
-                c.execute(
-                    delete(posts_table)
-                    .where((posts_table.c.author == i.acct))
-                )
+        if not rel.followed_by:
+            try:
+                if rel.following:
+                    mastodon.account_unfollow(i[0]) # this is not as important as following users
+                    # so we can safely unfollow a user on the second hour
 
-        except Exception as e:
-            print(f"failed to unfollow {i.acct}: {str(e)}")
-            pass
+                with engine.begin() as c:
+                    c.execute(
+                        delete(posts_table)
+                        .where((posts_table.c.author == i[0]))
+                    )
+                    c.execute(
+                        delete(follows_table)
+                        .where((follows_table.c.acct == i[0]))
+                    )
+
+            except Exception as e:
+                print(f"failed to unfollow {i[0]}: {str(e)}")
+                pass
 
 posts = []
 
@@ -120,11 +134,19 @@ with engine.begin() as c:
         select(posts_table.c.text, posts_table.c.has_cw, posts_table.c.visibility, posts_table.c.author)
     ).all()
 
+    settings_cache = {}
+
     for i in a:
-        if get_setting(c, i[3], "cw", "0") == "0" and i[1]:
+        if f"{i[3]}:cw" not in settings_cache:
+            settings_cache[f"{i[3]}:cw"] = get_setting(c, i[3], "cw", "0") == "0"
+
+        if f"{i[3]}:vis" not in settings_cache:
+            settings_cache[f"{i[3]}:vis"] = get_setting(c, i[3], "unlisted", "0")
+
+        if settings_cache[f"{i[3]}:cw"] and i[1]:
             continue
 
-        vis = get_setting(c, i[3], "unlisted", "0")
+        vis = settings_cache[f"{i[3]}:vis"]
         if vis == "0" and i[2] != "public":
             continue
         elif vis == "1" and i[2] not in ["public", "unlisted"]:

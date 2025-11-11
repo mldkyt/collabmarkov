@@ -8,6 +8,9 @@ if len(app_name.strip()) == 0:
 
 instance_url = input("instance url: ")
 
+if not os.path.exists("data"):
+    os.mkdir("data")
+
 if not os.path.exists("data/pytooter_clientcred.secret"):
     Mastodon.create_app(
         app_name,

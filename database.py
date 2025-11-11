@@ -32,6 +32,12 @@ responded_dms_table = Table(
     Column("id", VARCHAR, primary_key=True)
 )
 
+follows_table = Table(
+    "follows",
+    md_obj,
+    Column("id", VARCHAR, primary_key=True)
+)
+
 md_obj.create_all(engine, checkfirst=True)
 
 def get_setting(c: Connection, acct: str, setting: str, default: str) -> str:
