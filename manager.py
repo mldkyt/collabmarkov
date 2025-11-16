@@ -46,7 +46,7 @@ if not os.path.exists("data/pytooter_clientcred.secret"):
     )
 
 if not os.path.exists("data/pytooter_usercred.secret"):
-    mastodon = Mastodon(client_id='data/pytooter_clientcred.secret', api_base_url=f"https://{INSTANCE}")
+    mastodon = Mastodon(client_id='data/pytooter_clientcred.secret')
 
     mastodon.log_in(
         USERNAME,
@@ -54,7 +54,7 @@ if not os.path.exists("data/pytooter_usercred.secret"):
         to_file="data/pytooter_usercred.secret"
     )
 else:
-    mastodon = Mastodon(access_token='data/pytooter_usercred.secret', api_base_url=f"https://{INSTANCE}")
+    mastodon = Mastodon(access_token='data/pytooter_usercred.secret')
 
 me = mastodon.me()
 
@@ -101,25 +101,25 @@ while True:
                                      f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n\n"
                                      f"To use any of the commands, copy and paste them to a reply to this post.\n"
                                      f"\n"
-                                     f"<small>[Donate](https://ko-fi.com/lunyauwu) to help run collabmarkov! No pressure, thanks :3</small>", content_type="text/markdown", in_reply_to_id=i.status)
+                                     f"<small>[Donate](https://ko-fi.com/lunyauwu) to help run collabmarkov! No pressure, thanks :3</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
 
 
 
             elif re.match(r"^includes? CW'?d? (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "cw", "1")
-                mastodon.status_post(f"@{i.account.acct} The bot will now take posts under CW's and use them", in_reply_to_id=i.status)
+                mastodon.status_post(f"@{i.account.acct} The bot will now take posts under CW's and use them", in_reply_to_id=i.status, visibility='direct')
 
             elif re.match(r"^don'?t includes? CW'?d? (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "cw", "0")
-                mastodon.status_post(f"@{i.account.acct} The bot will no longer take posts under CW's and use them", in_reply_to_id=i.status)
+                mastodon.status_post(f"@{i.account.acct} The bot will no longer take posts under CW's and use them", in_reply_to_id=i.status, visibility='direct')
 
             elif re.match(r"^includes? (unlisted|home) (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "unlisted", "1")
-                mastodon.status_post(f"@{i.account.acct} The bot will now take unlisted posts and use them", in_reply_to_id=i.status)
+                mastodon.status_post(f"@{i.account.acct} The bot will now take unlisted posts and use them", in_reply_to_id=i.status, visibility='direct')
 
             elif re.match(r"^don'?t includes? (unlisted|home) (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "unlisted", "0")
-                mastodon.status_post(f"@{i.account.acct} The bot will no longer take unlisted posts and use them", in_reply_to_id=i.status)
+                mastodon.status_post(f"@{i.account.acct} The bot will no longer take unlisted posts and use them", in_reply_to_id=i.status, visibility='direct')
 
             else:
                 mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status)
@@ -130,4 +130,4 @@ while True:
                     insert(responded_dms_table)
                     .values(id=str(i.status.id))
                 )
-    sleep(15)
+    sleep(5)

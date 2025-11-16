@@ -1,3 +1,4 @@
+import datetime
 import os.path
 import re
 import typing
@@ -7,9 +8,9 @@ import bs4
 import markovify
 from dotenv import load_dotenv
 from mastodon import Mastodon
-from sqlalchemy import select, insert, delete
+from sqlalchemy import select, insert, delete, update
 
-from database import engine, posts_table, get_setting, follows_table
+from database import engine, posts_table, get_setting, follows_table, last_scan_table
 
 load_dotenv()
 
@@ -78,13 +79,36 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                     pass
 
         try:
+            a = c.execute(
+                select(last_scan_table.c.last_scan)
+                .where((last_scan_table.c.id == i.id))
+            ).fetchone()
+            if a is None:
+                c.execute(
+                    insert(last_scan_table)
+                    .values(id=i.id, last_scan=datetime.datetime.now())
+                )
+
+                do_full_scan = False
+            else:
+                if (datetime.datetime.now() - a[0]).total_seconds() > 1209600:
+                    do_full_scan = True
+                    c.execute(
+                        update(last_scan_table)
+                        .where((last_scan_table.c.id == i.id))
+                        .values(last_scan=datetime.datetime.now())
+                    )
+
             for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
                 a = c.execute(
                     select(posts_table.c.id)
                     .where((posts_table.c.id == str(j.id)))
                 ).fetchone()
                 if a is not None:
-                    break
+                    if do_full_scan:
+                        continue
+                    else:
+                        break
 
                 soup = bs4.BeautifulSoup(j.content)
                 text = get_text(soup)

@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN, update, Connection
+from sqlalchemy import create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN, update, Connection, \
+    DATETIME
 
 engine = create_engine(
     "sqlite:///data/collabmarkov.db",
@@ -37,6 +38,13 @@ follows_table = Table(
     md_obj,
     Column("id", VARCHAR, primary_key=True),
     Column("acct", VARCHAR, nullable=False)
+)
+
+last_scan_table = Table(
+    "last_scan",
+    md_obj,
+    Column("id", VARCHAR, primary_key=True),
+    Column("last_scan", DATETIME, nullable=False)
 )
 
 md_obj.create_all(engine, checkfirst=True)
