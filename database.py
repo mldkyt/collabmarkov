@@ -35,7 +35,8 @@ responded_dms_table = Table(
 follows_table = Table(
     "follows",
     md_obj,
-    Column("id", VARCHAR, primary_key=True)
+    Column("id", VARCHAR, primary_key=True),
+    Column("acct", VARCHAR, nullable=False)
 )
 
 md_obj.create_all(engine, checkfirst=True)

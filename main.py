@@ -65,7 +65,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                     mastodon.account_follow(i, reblogs=False)
                     c.execute(
                         insert(follows_table)
-                        .values(acct=i.acct)
+                        .values(id=i.id, acct=i.acct)
                     )
                     mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
                                          f"This bot will now use your posts for the corpus. "
@@ -101,7 +101,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
 
 with engine.begin() as c:
     a = c.execute(
-        select(follows_table.c.acct)
+        select(follows_table.c.id, follows_table.c.acct)
     ).all()
 
     for i in a:
@@ -116,11 +116,11 @@ with engine.begin() as c:
                 with engine.begin() as c:
                     c.execute(
                         delete(posts_table)
-                        .where((posts_table.c.author == i[0]))
+                        .where((posts_table.c.author == i[1]))
                     )
                     c.execute(
                         delete(follows_table)
-                        .where((follows_table.c.acct == i[0]))
+                        .where((follows_table.c.id == i[0]))
                     )
 
             except Exception as e:
