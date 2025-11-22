@@ -122,7 +122,7 @@ while True:
                 mastodon.status_post(f"@{i.account.acct} The bot will no longer take unlisted posts and use them", in_reply_to_id=i.status, visibility='direct')
 
             else:
-                mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status)
+                mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status, visibility='direct')
 
 
             if not is_replied:
