@@ -1,14 +1,19 @@
 import json
 import os
+import dotenv
 from sqlalchemy import DateTime, create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN, update, Connection
+
+dotenv.load_dotenv()
 
 DATABASE_URL = os.getenv('DATABASE_URL') or 'sqlite:///data/collabmarkov.db'
 DATABASE_CONNECT_ARGS = os.getenv('DATABASE_CONNECT_ARGS') or '{"timeout": 30}'
 
+DEBUG = os.getenv("DEBUG", "0") == "1"
+
 engine = create_engine(
     DATABASE_URL,
     connect_args=json.loads(DATABASE_CONNECT_ARGS),
-    echo=True
+    echo=DEBUG
 )
 
 md_obj = MetaData()
