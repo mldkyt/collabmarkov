@@ -1,9 +1,13 @@
-from sqlalchemy import create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN, update, Connection, \
-    DATETIME
+import json
+import os
+from sqlalchemy import DateTime, create_engine, MetaData, Table, Column, VARCHAR, insert, select, BOOLEAN, update, Connection
+
+DATABASE_URL = os.getenv('DATABASE_URL') or 'sqlite:///data/collabmarkov.db'
+DATABASE_CONNECT_ARGS = os.getenv('DATABASE_CONNECT_ARGS') or '{"timeout": 30}'
 
 engine = create_engine(
-    "sqlite:///data/collabmarkov.db",
-    connect_args={"timeout": 30},
+    DATABASE_URL,
+    connect_args=json.loads(DATABASE_CONNECT_ARGS),
     echo=True
 )
 
@@ -44,7 +48,7 @@ last_scan_table = Table(
     "last_scan",
     md_obj,
     Column("id", VARCHAR, primary_key=True),
-    Column("last_scan", DATETIME, nullable=False)
+    Column("last_scan", DateTime, nullable=False)
 )
 
 md_obj.create_all(engine, checkfirst=True)
@@ -77,4 +81,3 @@ def set_setting(c: Connection, acct: str, setting: str, value: str):
             insert(settings_table)
             .values(author=acct, setting=setting, value=value)
         )
-
