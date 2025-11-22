@@ -8,5 +8,6 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "beautifulsoup4>=4.14.2",
     "markovify>=0.9.4",
-    "sqlalchemy>=2.0.44"
+    "sqlalchemy>=2.0.44",
+    "psycopg2>=2.9.11"
 ]
