@@ -99,6 +99,8 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                         .where((last_scan_table.c.id == i.id))
                         .values(last_scan=datetime.datetime.now())
                     )
+                else:
+                    do_full_scan = False
 
             for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
                 a = c.execute(
