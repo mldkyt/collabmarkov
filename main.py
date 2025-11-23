@@ -60,7 +60,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
     with engine.begin() as c:
         rel = mastodon.account_relationships(i)[0]
 
-        if not rel.following and not rel.requested:
+        if not rel.following and not rel.requested and not rel.blocked_by:
             while True:
                 try:
                     mastodon.account_follow(i, reblogs=False)
@@ -76,6 +76,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
                     break
                 except Exception as e:
                     print(f"failed to follow {i.acct}: {str(e)}")
+                    print(f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
                     pass
 
         try:
