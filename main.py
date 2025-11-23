@@ -60,7 +60,7 @@ for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
     with engine.begin() as c:
         rel = mastodon.account_relationships(i)[0]
 
-        if not rel.following:
+        if not rel.following and not rel.requested:
             while True:
                 try:
                     mastodon.account_follow(i, reblogs=False)
