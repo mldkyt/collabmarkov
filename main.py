@@ -204,7 +204,7 @@ elif REMOVE_MENTIONS:
     output = re.sub(r"@[a-zA-Z.\-_]+", "", output) # removes mentions
 
 if SANITIZE_HASHTAGS:
-    output = re.sub(r"@(\S)", r"# \1", output) # breaks all hashtags
+    output = re.sub(r"#(\S)", r"# \1", output) # breaks all hashtags
 elif REMOVE_HASHTAGS:
     output = re.sub(r"#\w+", "", output) # removes hashtags
 
