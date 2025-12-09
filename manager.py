@@ -101,7 +101,7 @@ while True:
                                      f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n\n"
                                      f"To use any of the commands, copy and paste them to a reply to this post.\n"
                                      f"\n"
-                                     f"<small>[Donate](https://ko-fi.com/lunyauwu) to help run collabmarkov! No pressure, thanks :3 -@lunya@sk.lunya.pet</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
+                                     f"<small>[Donate](https://ko-fi.com/lunyauwu) to help run collabmarkov! No pressure, thanks :3 -[Lunya](https://sk.lunya.pet/@lunya)</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
 
 
 
