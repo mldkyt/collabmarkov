@@ -6,6 +6,7 @@ from os import getenv
 
 import bs4
 import markovify
+import requests
 from dotenv import load_dotenv
 from mastodon import Mastodon
 from sqlalchemy import select, insert, delete, update
@@ -212,3 +213,11 @@ if DEBUG:
     print(output)
 else:
     mastodon.toot(output)
+
+
+HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
+
+if len(HEARTBEAT_URL.strip()) == 0:
+    exit(0)
+
+requests.post(HEARTBEAT_URL)
