@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from mastodon import Mastodon
 from sqlalchemy import select, insert
 
-from database import engine, responded_dms_table, set_setting
+from database import engine, responded_dms_table, set_setting, get_setting
 
 
 # borrowed from https://stackoverflow.com/questions/30337528/make-beautifulsoup-handle-line-breaks-as-a-browser-would
@@ -98,7 +98,8 @@ while True:
                                      f"- `include CWd posts` - send this to allow posts under a content warning\n"
                                      f"- `don't include CWd posts` - send this to disallow posts under a content warning\n"
                                      f"- `include unlisted posts` - send this to allow unlisted (private) posts\n"
-                                     f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n\n"
+                                     f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n"
+                                     f"- `get/list settings` - get current settings\n\n"
                                      f"To use any of the commands, copy and paste them to a reply to this post.\n"
                                      f"\n"
                                      f"<small>[Donate](https://ko-fi.com/lunyauwu) to help run collabmarkov! No pressure, thanks :3 -[Lunya](https://sk.lunya.pet/@lunya)</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
@@ -111,7 +112,7 @@ while True:
 
             elif re.match(r"^don'?t includes? CW'?d? (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "cw", "0")
-                mastodon.status_post(f"@{i.account.acct} The bot will no longer take posts under CW's and use them", in_reply_to_id=i.status, visibility='direct')
+                mastodon.status_post(f"@{i.account.acct} The bot will no longer use posts under CW's", in_reply_to_id=i.status, visibility='direct')
 
             elif re.match(r"^includes? (unlisted|home) (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "unlisted", "1")
@@ -119,7 +120,16 @@ while True:
 
             elif re.match(r"^don'?t includes? (unlisted|home) (posts?|notes?)$", command) is not None:
                 set_setting(c, i.account.acct, "unlisted", "0")
-                mastodon.status_post(f"@{i.account.acct} The bot will no longer take unlisted posts and use them", in_reply_to_id=i.status, visibility='direct')
+                mastodon.status_post(f"@{i.account.acct} The bot will no longer use unlisted posts", in_reply_to_id=i.status, visibility='direct')
+
+            elif re.match("^(get|list)( settings)?", command) is not None:
+                cw = get_setting(c, i.account.acct, "cw", "0")
+                unlisted = get_setting(c, i.account.acct, "unlisted", "0")
+
+                mastodon.status_post(f"""@{i.account.acct} Current settings:
+- Use CW'd posts: {"yes" if cw == "1" else "no"}
+- Use unlisted posts: {"yes" if unlisted == "1" else "no"}
+You can change these by asking for help""", in_reply_to_id=i.status, visibility='direct')
 
             else:
                 mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status, visibility='direct')
