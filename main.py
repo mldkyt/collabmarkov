@@ -12,6 +12,7 @@ from mastodon import Mastodon
 from sqlalchemy import select, insert, delete, update
 
 from database import engine, posts_table, get_setting, follows_table, last_scan_table
+from logger import collabmarkov_logger
 
 load_dotenv()
 
@@ -52,80 +53,84 @@ mastodon = Mastodon(access_token='data/pytooter_usercred.secret')
 
 me = mastodon.me()
 
-for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
-    print(i.display_name)
+try:
+    for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
+        print(i.display_name)
 
-    if '#nomarkov' in i.note.lower():
-        continue
+        if '#nomarkov' in i.note.lower():
+            continue
 
-    with engine.begin() as c:
-        rel = mastodon.account_relationships(i)[0]
+        with engine.begin() as c:
+            rel = mastodon.account_relationships(i)[0]
 
-        if not rel.following and not rel.requested and not rel.blocked_by:
-            while True:
-                try:
-                    mastodon.account_follow(i, reblogs=False)
-                    c.execute(
-                        insert(follows_table)
-                        .values(id=i.id, acct=i.acct)
-                    )
-                    mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
-                                         f"This bot will now use your posts for the corpus. "
-                                         f"**Only posts that are public and don't have CW are used.** "
-                                         f"The behaviour of this can be changed by replying to this post with `help`.",
-                                         visibility='direct')
-                    break
-                except Exception as e:
-                    print(f"failed to follow {i.acct}: {str(e)}")
-                    print(f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
-                    pass
-
-        try:
-            a = c.execute(
-                select(last_scan_table.c.last_scan)
-                .where((last_scan_table.c.id == i.id))
-            ).fetchone()
-            if a is None:
-                c.execute(
-                    insert(last_scan_table)
-                    .values(id=i.id, last_scan=datetime.datetime.now())
-                )
-
-                do_full_scan = False
-            else:
-                if (datetime.datetime.now() - a[0]).total_seconds() > 1209600:
-                    do_full_scan = True
-                    c.execute(
-                        update(last_scan_table)
-                        .where((last_scan_table.c.id == i.id))
-                        .values(last_scan=datetime.datetime.now())
-                    )
-                else:
-                    do_full_scan = False
-
-            for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
-                a = c.execute(
-                    select(posts_table.c.id)
-                    .where((posts_table.c.id == str(j.id)))
-                ).fetchone()
-                if a is not None:
-                    if do_full_scan:
-                        continue
-                    else:
+            if not rel.following and not rel.requested and not rel.blocked_by:
+                while True:
+                    try:
+                        mastodon.account_follow(i, reblogs=False)
+                        c.execute(
+                            insert(follows_table)
+                            .values(id=i.id, acct=i.acct)
+                        )
+                        mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
+                                             f"This bot will now use your posts for the corpus. "
+                                             f"**Only posts that are public and don't have CW are used.** "
+                                             f"The behaviour of this can be changed by replying to this post with `help`.",
+                                             visibility='direct')
                         break
+                    except Exception as e:
+                        print(f"failed to follow {i.acct}: {str(e)}")
+                        print(f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
+                        pass
 
-                soup = bs4.BeautifulSoup(j.content)
-                text = get_text(soup)
+            try:
+                a = c.execute(
+                    select(last_scan_table.c.last_scan)
+                    .where((last_scan_table.c.id == i.id))
+                ).fetchone()
+                if a is None:
+                    c.execute(
+                        insert(last_scan_table)
+                        .values(id=i.id, last_scan=datetime.datetime.now())
+                    )
 
-                has_cw = len(j.spoiler_text) > 0
+                    do_full_scan = False
+                else:
+                    if (datetime.datetime.now() - a[0]).total_seconds() > 1209600:
+                        do_full_scan = True
+                        c.execute(
+                            update(last_scan_table)
+                            .where((last_scan_table.c.id == i.id))
+                            .values(last_scan=datetime.datetime.now())
+                        )
+                    else:
+                        do_full_scan = False
 
-                c.execute(
-                    insert(posts_table)
-                    .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility, author=i.acct)
-                )
-        except Exception as e:
-            print(f"failed to query posts for {i.acct}: {str(e)}")
-            pass
+                for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
+                    a = c.execute(
+                        select(posts_table.c.id)
+                        .where((posts_table.c.id == str(j.id)))
+                    ).fetchone()
+                    if a is not None:
+                        if do_full_scan:
+                            continue
+                        else:
+                            break
+
+                    soup = bs4.BeautifulSoup(j.content)
+                    text = get_text(soup)
+
+                    has_cw = len(j.spoiler_text) > 0
+
+                    c.execute(
+                        insert(posts_table)
+                        .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility, author=i.acct)
+                    )
+            except Exception as e:
+                print(f"failed to query posts for {i.acct}: {str(e)}")
+                pass
+except Exception:
+    collabmarkov_logger.exception("Skipping check of followers: ")
+    pass
 
 with engine.begin() as c:
     a = c.execute(
