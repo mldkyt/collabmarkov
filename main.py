@@ -1,9 +1,8 @@
-import asyncio
 import datetime
 import os.path
 import re
 import typing
-from asyncio import sleep
+from asyncio import sleep, get_event_loop, gather
 from os import getenv
 
 import bs4
@@ -132,42 +131,41 @@ async def commands():
                     mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status, visibility='direct')
 
 
-                if not is_replied:
-                    c.execute(
-                        insert(responded_dms_table)
-                        .values(id=str(i.status.id))
-                    )
+                c.execute(
+                    insert(responded_dms_table)
+                    .values(id=str(i.status.id))
+                )
 
         await sleep(10)
 
 
 async def followers():
     while True:
-        for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
-            print(i.display_name)
+        for account in mastodon.pagination_iterator(mastodon.account_followers(me)):
+            print(account.display_name)
 
-            if '#nomarkov' in i.note.lower():
+            if '#nomarkov' in account.note.lower():
                 continue
 
             with engine.begin() as c:
-                rel = mastodon.account_relationships(i)[0]
+                rel = mastodon.account_relationships(account)[0]
 
                 if not rel.following and not rel.requested and not rel.blocked_by:
                     while True:
                         try:
-                            mastodon.account_follow(i, reblogs=False)
+                            mastodon.account_follow(account, reblogs=False)
                             c.execute(
                                 insert(follows_table)
-                                .values(id=i.id, acct=i.acct)
+                                .values(id=account.id, acct=account.acct)
                             )
-                            mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
+                            mastodon.status_post(f"@{account.acct} Welcome to Collaborative Markov Bot!"
                                                  f"This bot will now use your posts for the corpus. "
                                                  f"**Only posts that are public and don't have CW are used.** "
                                                  f"The behaviour of this can be changed by replying to this post with `help`.",
                                                  visibility='direct')
                             break
                         except Exception as e:
-                            print(f"failed to follow {i.acct}: {str(e)}")
+                            print(f"failed to follow {account.acct}: {str(e)}")
                             print(
                                 f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
                             pass
@@ -175,30 +173,28 @@ async def followers():
                 try:
                     a = c.execute(
                         select(last_scan_table.c.last_scan)
-                        .where((last_scan_table.c.id == i.id))
+                        .where((last_scan_table.c.id == account.id))
                     ).fetchone()
+                    do_full_scan = False
                     if a is None:
                         c.execute(
                             insert(last_scan_table)
-                            .values(id=i.id, last_scan=datetime.datetime.now())
+                            .values(id=account.id, last_scan=datetime.datetime.now())
                         )
 
-                        do_full_scan = False
                     else:
                         if (datetime.datetime.now() - a[0]).total_seconds() > 1209600:
                             do_full_scan = True
                             c.execute(
                                 update(last_scan_table)
-                                .where((last_scan_table.c.id == i.id))
+                                .where((last_scan_table.c.id == account.id))
                                 .values(last_scan=datetime.datetime.now())
                             )
-                        else:
-                            do_full_scan = False
 
-                    for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
+                    for status in mastodon.pagination_iterator(mastodon.account_statuses(account, exclude_reblogs=True)):
                         a = c.execute(
                             select(posts_table.c.id)
-                            .where((posts_table.c.id == str(j.id)))
+                            .where((posts_table.c.id == str(status.id)))
                         ).fetchone()
                         if a is not None:
                             if do_full_scan:
@@ -206,21 +202,19 @@ async def followers():
                             else:
                                 break
 
-                        soup = bs4.BeautifulSoup(j.content)
+                        soup = bs4.BeautifulSoup(status.content)
                         text = get_text(soup)
 
-                        has_cw = len(j.spoiler_text) > 0
+                        has_cw = len(status.spoiler_text) > 0
 
                         c.execute(
                             insert(posts_table)
-                            .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility, author=i.acct)
+                            .values(id=str(status.id), text=text, has_cw=has_cw, visibility=status.visibility, author=account.acct)
                         )
                 except Exception as e:
-                    print(f"failed to query posts for {i.acct}: {str(e)}")
+                    print(f"failed to query posts for {account.acct}: {str(e)}")
                     pass
 
-async def post():
-    while True:
         with engine.begin() as c:
             a = c.execute(
                 select(follows_table.c.id, follows_table.c.acct)
@@ -248,6 +242,11 @@ async def post():
                     except Exception as e:
                         print(f"failed to unfollow {i[0]}: {str(e)}")
                         pass
+
+        await sleep(300)
+
+async def post():
+    while True:
 
         posts = []
 
@@ -290,8 +289,12 @@ async def post():
         markov.compile(inplace=True)
 
         output = None
-        while output is None:
+        for attempt in range(10000):
             output = markov.make_sentence()
+
+        if output is None:
+            print("After 10000 attempts no output was made, skipping")
+            continue
 
         if SANITIZE_MENTIONS:
             output = re.sub(r"@(\S)", r"@ \1", output)  # breaks all mentions, both local and remote
@@ -328,4 +331,4 @@ if __name__ == '__main__':
         post()
     ]
 
-    asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
+    get_event_loop().run_until_complete(gather(*tasks))
