@@ -217,7 +217,7 @@ elif REMOVE_HASHTAGS:
 if DEBUG:
     print(output)
 else:
-    mastodon.toot(output)
+    mastodon.status_post(output, spoiler_text="Collabmarkov generated post", visibility="unlisted")
 
 
 HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
