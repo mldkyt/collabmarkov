@@ -100,7 +100,7 @@ async def commands():
                                              f"- `get/list settings` - get current settings\n\n"
                                              f"To use any of the commands, copy and paste them to a reply to this post.\n"
                                              f"\n"
-                                             f"<small>[Donate](https://ko-fi.com/c4tgirl) to help run collabmarkov! No pressure, thanks :3 -[Luna](https://fedi.mldchan.dev/users/luna)</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
+                                             f"<small>[Donate](https://ko-fi.com/c4tgirl) to help run collabmarkov! -[Luna](https://fedi.mldchan.dev/users/luna)</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
 
 
 
