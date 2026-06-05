@@ -2,6 +2,10 @@ import os
 
 from mastodon import Mastodon
 
+if os.path.exists("data/pytooter_usercred.secret"):
+    print("you might already be authorized, please delete credential files in the data folder to reauthorize")
+    exit(0)
+
 app_name = input("app name [collabmarkov]: ")
 if len(app_name.strip()) == 0:
     app_name = "collabmarkov"

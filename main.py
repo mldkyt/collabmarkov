@@ -2,6 +2,7 @@ import datetime
 import os.path
 import re
 import typing
+from asyncio import sleep, gather, run
 from os import getenv
 
 import bs4
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 from mastodon import Mastodon
 from sqlalchemy import select, insert, delete, update
 
-from database import engine, posts_table, get_setting, follows_table, last_scan_table
+from database import engine, posts_table, follows_table, last_scan_table, responded_dms_table, set_setting, get_setting
 from logger import collabmarkov_logger
 
 load_dotenv()
@@ -53,176 +54,301 @@ mastodon = Mastodon(access_token='data/pytooter_usercred.secret')
 
 me = mastodon.me()
 
-try:
-    for i in mastodon.pagination_iterator(mastodon.account_followers(me)):
-        print(i.display_name)
+async def commands():
+    while True:
+        try:
+            notifications = mastodon.notifications(types=["mention"], limit=10)
 
-        if '#nomarkov' in i.note.lower():
+            with engine.begin() as c:
+                for i in notifications:
+                    if i.status is None or i.account is None:
+                        continue
+
+                    if i.status.in_reply_to_id is not None:
+                        post_that_was_replied_to = mastodon.status(i.status.in_reply_to_id)
+                        if post_that_was_replied_to.visibility != 'direct' and post_that_was_replied_to.account.id != me.id:
+                            continue
+                    if i.status.visibility != 'direct':
+                        continue
+
+                    is_replied = c.execute(
+                        select(responded_dms_table)
+                        .where((responded_dms_table.c.id == str(i.status.id)))
+                    ).fetchone() is not None
+
+                    if is_replied:
+                        continue
+
+                    print(i.status.visibility, i.account.acct, i.status.id)
+
+                    text = get_text(bs4.BeautifulSoup(i.status.content, features="html.parser")).strip()
+
+                    if not text.startswith(f"@{me.acct}"):
+                        print(text)
+                        print("skipping: not mentioning collabmarkov")
+                        continue
+
+                    command = (" ".join(text.split(" ")[1:])).strip()
+
+                    if command == 'help':
+                        print("sending help command test")
+                        mastodon.status_post(f"@{i.account.acct} Available commands\n"
+                                             f"- `include CWd posts` - send this to allow posts under a content warning\n"
+                                             f"- `don't include CWd posts` - send this to disallow posts under a content warning\n"
+                                             f"- `include unlisted posts` - send this to allow unlisted (private) posts\n"
+                                             f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n"
+                                             f"- `get/list settings` - get current settings\n\n"
+                                             f"To use any of the commands, copy and paste them to a reply to this post.\n"
+                                             f"\n"
+                                             f"<small>[Donate](https://ko-fi.com/c4tgirl) to help run collabmarkov! -[Luna](https://fedi.mldchan.dev/users/luna)</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
+
+
+
+                    elif re.match(r"^includes? CW'?d? (posts?|notes?)$", command) is not None:
+                        set_setting(c, i.account.acct, "cw", "1")
+                        mastodon.status_post(f"@{i.account.acct} The bot will now take posts under CW's and use them", in_reply_to_id=i.status, visibility='direct')
+
+                    elif re.match(r"^don'?t includes? CW'?d? (posts?|notes?)$", command) is not None:
+                        set_setting(c, i.account.acct, "cw", "0")
+                        mastodon.status_post(f"@{i.account.acct} The bot will no longer use posts under CW's", in_reply_to_id=i.status, visibility='direct')
+
+                    elif re.match(r"^includes? (unlisted|home) (posts?|notes?)$", command) is not None:
+                        set_setting(c, i.account.acct, "unlisted", "1")
+                        mastodon.status_post(f"@{i.account.acct} The bot will now take unlisted posts and use them", in_reply_to_id=i.status, visibility='direct')
+
+                    elif re.match(r"^don'?t includes? (unlisted|home) (posts?|notes?)$", command) is not None:
+                        set_setting(c, i.account.acct, "unlisted", "0")
+                        mastodon.status_post(f"@{i.account.acct} The bot will no longer use unlisted posts", in_reply_to_id=i.status, visibility='direct')
+
+                    elif re.match("^(get|list)( settings)?", command) is not None:
+                        cw = get_setting(c, i.account.acct, "cw", "0")
+                        unlisted = get_setting(c, i.account.acct, "unlisted", "0")
+
+                        mastodon.status_post(f"""@{i.account.acct} Current settings:
+        - Use CW'd posts: {"yes" if cw == "1" else "no"}
+        - Use unlisted posts: {"yes" if unlisted == "1" else "no"}
+        You can change these by asking for help""", in_reply_to_id=i.status, visibility='direct')
+
+                    else:
+                        mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status, visibility='direct')
+
+
+                    c.execute(
+                        insert(responded_dms_table)
+                        .values(id=str(i.status.id))
+                    )
+
+            await sleep(10)
+        except Exception:
+            collabmarkov_logger.exception("Error inside replying notifications")
+            await sleep(300)
             continue
 
-        with engine.begin() as c:
-            rel = mastodon.account_relationships(i)[0]
 
-            if not rel.following and not rel.requested and not rel.blocked_by:
-                while True:
-                    try:
-                        mastodon.account_follow(i, reblogs=False)
-                        c.execute(
-                            insert(follows_table)
-                            .values(id=i.id, acct=i.acct)
-                        )
-                        mastodon.status_post(f"@{i.acct} Welcome to Collaborative Markov Bot!"
-                                             f"This bot will now use your posts for the corpus. "
-                                             f"**Only posts that are public and don't have CW are used.** "
-                                             f"The behaviour of this can be changed by replying to this post with `help`.",
-                                             visibility='direct')
-                        break
-                    except Exception as e:
-                        print(f"failed to follow {i.acct}: {str(e)}")
-                        print(f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
-                        pass
 
-            try:
-                a = c.execute(
-                    select(last_scan_table.c.last_scan)
-                    .where((last_scan_table.c.id == i.id))
-                ).fetchone()
-                if a is None:
-                    c.execute(
-                        insert(last_scan_table)
-                        .values(id=i.id, last_scan=datetime.datetime.now())
-                    )
+async def followers():
+    while True:
+        try:
+            for account in mastodon.pagination_iterator(mastodon.account_followers(me)):
+                print(account.display_name)
 
-                    do_full_scan = False
-                else:
-                    if (datetime.datetime.now() - a[0]).total_seconds() > 1209600:
-                        do_full_scan = True
-                        c.execute(
-                            update(last_scan_table)
-                            .where((last_scan_table.c.id == i.id))
-                            .values(last_scan=datetime.datetime.now())
-                        )
-                    else:
-                        do_full_scan = False
-
-                for j in mastodon.pagination_iterator(mastodon.account_statuses(i, exclude_reblogs=True)):
-                    a = c.execute(
-                        select(posts_table.c.id)
-                        .where((posts_table.c.id == str(j.id)))
-                    ).fetchone()
-                    if a is not None:
-                        if do_full_scan:
-                            continue
-                        else:
-                            break
-
-                    soup = bs4.BeautifulSoup(j.content)
-                    text = get_text(soup)
-
-                    has_cw = len(j.spoiler_text) > 0
-
-                    c.execute(
-                        insert(posts_table)
-                        .values(id=str(j.id), text=text, has_cw=has_cw, visibility=j.visibility, author=i.acct)
-                    )
-            except Exception as e:
-                print(f"failed to query posts for {i.acct}: {str(e)}")
-                pass
-except Exception:
-    collabmarkov_logger.exception("Skipping check of followers: ")
-    pass
-
-with engine.begin() as c:
-    a = c.execute(
-        select(follows_table.c.id, follows_table.c.acct)
-    ).all()
-
-    for i in a:
-        rel = mastodon.account_relationships(i[0])[0]
-
-        if not rel.followed_by:
-            try:
-                if rel.following:
-                    mastodon.account_unfollow(i[0]) # this is not as important as following users
-                    # so we can safely unfollow a user on the second hour
+                if '#nomarkov' in account.note.lower():
+                    continue
 
                 with engine.begin() as c:
-                    c.execute(
-                        delete(posts_table)
-                        .where((posts_table.c.author == i[1]))
-                    )
-                    c.execute(
-                        delete(follows_table)
-                        .where((follows_table.c.id == i[0]))
-                    )
+                    rel = mastodon.account_relationships(account)[0]
 
-            except Exception as e:
-                print(f"failed to unfollow {i[0]}: {str(e)}")
-                pass
+                    if not rel.following and not rel.requested and not rel.blocked_by:
+                        while True:
+                            try:
+                                mastodon.account_follow(account, reblogs=False)
+                                c.execute(
+                                    insert(follows_table)
+                                    .values(id=account.id, acct=account.acct)
+                                )
+                                mastodon.status_post(f"@{account.acct} Welcome to Collaborative Markov Bot!"
+                                                     f"This bot will now use your posts for the corpus. "
+                                                     f"**Only posts that are public and don't have CW are used.** "
+                                                     f"The behaviour of this can be changed by replying to this post with `help`.",
+                                                     visibility='direct')
+                                break
+                            except Exception as e:
+                                print(f"failed to follow {account.acct}: {str(e)}")
+                                print(
+                                    f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
+                                pass
 
-posts = []
+                    try:
+                        a = c.execute(
+                            select(last_scan_table.c.last_scan)
+                            .where((last_scan_table.c.id == account.id))
+                        ).fetchone()
+                        do_full_scan = False
+                        if a is None:
+                            c.execute(
+                                insert(last_scan_table)
+                                .values(id=account.id, last_scan=datetime.datetime.now())
+                            )
 
-with engine.begin() as c:
-    a = c.execute(
-        select(posts_table.c.text, posts_table.c.has_cw, posts_table.c.visibility, posts_table.c.author)
-    ).all()
+                        else:
+                            if (datetime.datetime.now() - a[0]).total_seconds() > 1209600:
+                                do_full_scan = True
+                                c.execute(
+                                    update(last_scan_table)
+                                    .where((last_scan_table.c.id == account.id))
+                                    .values(last_scan=datetime.datetime.now())
+                                )
 
-    settings_cache = {}
+                        for status in mastodon.pagination_iterator(mastodon.account_statuses(account, exclude_reblogs=True)):
+                            a = c.execute(
+                                select(posts_table.c.id)
+                                .where((posts_table.c.id == str(status.id)))
+                            ).fetchone()
+                            if a is not None:
+                                if do_full_scan:
+                                    continue
+                                else:
+                                    break
 
-    for i in a:
-        if f"{i[3]}:cw" not in settings_cache:
-            settings_cache[f"{i[3]}:cw"] = get_setting(c, i[3], "cw", "0") == "0"
+                            soup = bs4.BeautifulSoup(status.content, features="html.parser")
+                            text = get_text(soup)
 
-        if f"{i[3]}:vis" not in settings_cache:
-            settings_cache[f"{i[3]}:vis"] = get_setting(c, i[3], "unlisted", "0")
+                            has_cw = len(status.spoiler_text) > 0
 
-        if settings_cache[f"{i[3]}:cw"] and i[1]:
+                            c.execute(
+                                insert(posts_table)
+                                .values(id=str(status.id), text=text, has_cw=has_cw, visibility=status.visibility, author=account.acct)
+                            )
+                    except Exception as e:
+                        print(f"failed to query posts for {account.acct}: {str(e)}")
+                        pass
+
+            with engine.begin() as c:
+                a = c.execute(
+                    select(follows_table.c.id, follows_table.c.acct)
+                ).all()
+
+                for i in a:
+                    rel = mastodon.account_relationships(i[0])[0]
+
+                    if not rel.followed_by:
+                        try:
+                            if rel.following:
+                                mastodon.account_unfollow(i[0])  # this is not as important as following users
+                                # so we can safely unfollow a user on the second hour
+
+                            with engine.begin() as c:
+                                c.execute(
+                                    delete(posts_table)
+                                    .where((posts_table.c.author == i[1]))
+                                )
+                                c.execute(
+                                    delete(follows_table)
+                                    .where((follows_table.c.id == i[0]))
+                                )
+
+                        except Exception as e:
+                            print(f"failed to unfollow {i[0]}: {str(e)}")
+                            pass
+
+            await sleep(300)
+        except Exception:
+            collabmarkov_logger.exception("When following error occurred")
+            await sleep(300)
             continue
 
-        vis = settings_cache[f"{i[3]}:vis"]
-        if vis == "0" and i[2] != "public":
-            continue
-        elif vis == "1" and i[2] not in ["public", "unlisted"]:
-            continue
+async def post():
+    while True:
+        try:
+            posts = []
 
-        for j in FILTER_KEYWORDS:
-            if j.lower() in i[0].lower():
+            with engine.begin() as c:
+                a = c.execute(
+                    select(posts_table.c.text, posts_table.c.has_cw, posts_table.c.visibility, posts_table.c.author)
+                ).all()
+
+                settings_cache = {}
+
+                for i in a:
+                    if f"{i[3]}:cw" not in settings_cache:
+                        settings_cache[f"{i[3]}:cw"] = get_setting(c, i[3], "cw", "0") == "0"
+
+                    if f"{i[3]}:vis" not in settings_cache:
+                        settings_cache[f"{i[3]}:vis"] = get_setting(c, i[3], "unlisted", "0")
+
+                    if settings_cache[f"{i[3]}:cw"] and i[1]:
+                        continue
+
+                    vis = settings_cache[f"{i[3]}:vis"]
+                    if vis == "0" and i[2] != "public":
+                        continue
+                    elif vis == "1" and i[2] not in ["public", "unlisted"]:
+                        continue
+
+                    for j in FILTER_KEYWORDS:
+                        if j.lower() in i[0].lower():
+                            continue
+
+                    posts.append(i[0])
+
+            if len(posts) == 0:
+                print("No posts, waiting...")
+                await sleep(60)
                 continue
 
-        posts.append(i[0])
+            posts = "\n".join(posts)
 
-if len(posts) == 0:
-    print("No posts")
-    exit(0)
+            markov = markovify.NewlineText(posts)
+            markov.compile(inplace=True)
 
-posts = "\n".join(posts)
+            output = None
+            for attempt in range(10000):
+                output = markov.make_sentence()
 
-markov = markovify.NewlineText(posts)
-markov.compile(inplace=True)
+            if output is None:
+                print("After 10000 attempts no output was made, skipping")
+                continue
 
-output = None
-while output is None:
-    output = markov.make_sentence()
+            if SANITIZE_MENTIONS:
+                output = re.sub(r"@(\S)", r"@ \1", output)  # breaks all mentions, both local and remote
+            elif REMOVE_MENTIONS:
+                output = re.sub(r"@[a-zA-Z.\-_]+", "", output)  # removes mentions
 
-if SANITIZE_MENTIONS:
-    output = re.sub(r"@(\S)", r"@ \1", output) # breaks all mentions, both local and remote
-elif REMOVE_MENTIONS:
-    output = re.sub(r"@[a-zA-Z.\-_]+", "", output) # removes mentions
+            if SANITIZE_HASHTAGS:
+                output = re.sub(r"#(\S)", r"# \1", output)  # breaks all hashtags
+            elif REMOVE_HASHTAGS:
+                output = re.sub(r"#\w+", "", output)  # removes hashtags
 
-if SANITIZE_HASHTAGS:
-    output = re.sub(r"#(\S)", r"# \1", output) # breaks all hashtags
-elif REMOVE_HASHTAGS:
-    output = re.sub(r"#\w+", "", output) # removes hashtags
+            if DEBUG:
+                print(output)
+            else:
+                mastodon.status_post(output, spoiler_text="Collabmarkov generated post", visibility="unlisted")
 
-if DEBUG:
-    print(output)
-else:
-    mastodon.status_post(output, spoiler_text="Collabmarkov generated post", visibility="unlisted")
+            await sleep(3600)
+        except Exception:
+            collabmarkov_logger.exception("Exception occurred when making post")
+            await sleep(300)
+            continue
 
 
-HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
+async def heartbeat():
+    while True:
+        HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
 
-if len(HEARTBEAT_URL.strip()) == 0:
-    exit(0)
+        if len(HEARTBEAT_URL.strip()) == 0:
+            return
 
-requests.post(HEARTBEAT_URL)
+        requests.post(HEARTBEAT_URL)
+
+async def main():
+    tasks = [
+        heartbeat(),
+        followers(),
+        post(),
+        commands()
+    ]
+
+    await gather(*tasks)
+
+if __name__ == '__main__':
+    run(main())

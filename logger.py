@@ -4,7 +4,7 @@ import os
 if not os.path.exists("logs"):
     os.mkdir("logs")
 
-collabmarkov_logger = logging.getLogger("wafbot")
+collabmarkov_logger = logging.getLogger("collabmarkov")
 collabmarkov_formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
@@ -12,7 +12,7 @@ collabmarkov_formatter = logging.Formatter(
 collabmarkov_logger.setLevel(logging.DEBUG)
 
 file_handler = logging.FileHandler(
-    filename=f"logs/wafbot.log", mode="a", encoding="utf-8"
+    filename=f"logs/collabmarkov.log", mode="a", encoding="utf-8"
 )
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(collabmarkov_formatter)
