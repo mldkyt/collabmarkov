@@ -210,7 +210,7 @@ async def followers():
                                 else:
                                     break
 
-                            soup = bs4.BeautifulSoup(status.content)
+                            soup = bs4.BeautifulSoup(status.content, features="html.parser")
                             text = get_text(soup)
 
                             has_cw = len(status.spoiler_text) > 0
