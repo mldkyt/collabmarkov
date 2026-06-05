@@ -2,7 +2,7 @@ import datetime
 import os.path
 import re
 import typing
-from asyncio import sleep, get_event_loop, gather
+from asyncio import sleep, gather, run
 from os import getenv
 
 import bs4
@@ -247,7 +247,6 @@ async def followers():
 
 async def post():
     while True:
-
         posts = []
 
         with engine.begin() as c:
@@ -280,8 +279,9 @@ async def post():
                 posts.append(i[0])
 
         if len(posts) == 0:
-            print("No posts")
-            exit(0)
+            print("No posts, waiting...")
+            await sleep(60)
+            continue
 
         posts = "\n".join(posts)
 
@@ -319,16 +319,19 @@ async def heartbeat():
         HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
 
         if len(HEARTBEAT_URL.strip()) == 0:
-            exit(0)
+            return
 
         requests.post(HEARTBEAT_URL)
 
-
-if __name__ == '__main__':
+async def main():
     tasks = [
         heartbeat(),
         followers(),
-        post()
+        post(),
+        commands()
     ]
 
-    get_event_loop().run_until_complete(gather(*tasks))
+    await gather(*tasks)
+
+if __name__ == '__main__':
+    run(main())
