@@ -158,10 +158,23 @@ async def followers():
                 with engine.begin() as c:
                     rel = mastodon.account_relationships(account)[0]
 
-                    if not rel.following and not rel.requested and not rel.blocked_by and c.execute(
-                        select(follows_table)
-                        .where(follows_table.c.id == str(account.id))
-                    ) is None:
+                    if not rel.following and not rel.requested and not rel.blocked_by:
+
+                        if c.execute(
+                            select(follows_table)
+                            .where(follows_table.c.id == str(account.id))
+                        ).fetchone() is not None:
+                            print(f"Unfollowing {account.display_name}: inside the followers table but not following")
+                            # This likely only happens if the user is following the account and rejects the follow request
+                            # (rel.following=False, rel.requested=False, rel.blockedby=False)
+                            mastodon.account_remove_from_followers(account)
+                            c.execute(
+                                delete(follows_table)
+                                .where(follows_table.c.id == str(account.id))
+                            )
+
+                            continue
+
                         while True:
                             try:
                                 mastodon.account_follow(account, reblogs=False)
