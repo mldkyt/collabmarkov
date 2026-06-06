@@ -88,50 +88,59 @@ async def commands():
                         print("skipping: not mentioning collabmarkov")
                         continue
 
-                    command = (" ".join(text.split(" ")[1:])).strip()
+                    reply = ""
 
-                    if command == 'help':
-                        print("sending help command test")
-                        mastodon.status_post(f"@{i.account.acct} Available commands\n"
-                                             f"- `include CWd posts` - send this to allow posts under a content warning\n"
-                                             f"- `don't include CWd posts` - send this to disallow posts under a content warning\n"
-                                             f"- `include unlisted posts` - send this to allow unlisted (private) posts\n"
-                                             f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n"
-                                             f"- `get/list settings` - get current settings\n\n"
-                                             f"To use any of the commands, copy and paste them to a reply to this post.\n"
-                                             f"\n"
-                                             f"<small>[Donate](https://ko-fi.com/c4tgirl) to help run collabmarkov! -[Luna](https://fedi.mldchan.dev/users/luna)</small>", content_type="text/markdown", in_reply_to_id=i.status, visibility='direct')
+                    for command_candidate in text.splitlines():
+                        command = command_candidate.strip()
+                        if command.startswith("@"):
+                            command = " ".join(command.split(" ")[1:])
+                        command = " ".join([part for part in command.split(" ") if len(part.strip()) > 0])
+                        if len(command) == 0:
+                            continue
 
+                        if command == 'help':
+                            print("sending help command test")
+                            reply += (f"Available commands\n"
+                                     f"- `include CWd posts` - send this to allow posts under a content warning\n"
+                                     f"- `don't include CWd posts` - send this to disallow posts under a content warning\n"
+                                     f"- `include unlisted posts` - send this to allow unlisted (private) posts\n"
+                                     f"- `don't include unlisted posts` - send this to disallow unlisted (private) posts\n"
+                                     f"- `get/list settings` - get current settings\n\n"
+                                     f"To use any of the commands, copy and paste them to a reply to this post.\n"
+                                     f"\n"
+                                     f"<small>[Donate](https://ko-fi.com/c4tgirl) to help run collabmarkov! -[Luna](https://fedi.mldchan.dev/users/luna)</small>"
+                                      f"\n\n")
 
+                        elif re.match(r"^includes? CW'?d? (posts?|notes?)$", command) is not None:
+                            set_setting(c, i.account.acct, "cw", "1")
+                            reply += f"Now including CW'd posts in the corpus\n\n"
 
-                    elif re.match(r"^includes? CW'?d? (posts?|notes?)$", command) is not None:
-                        set_setting(c, i.account.acct, "cw", "1")
-                        mastodon.status_post(f"@{i.account.acct} The bot will now take posts under CW's and use them", in_reply_to_id=i.status, visibility='direct')
+                        elif re.match(r"^don'?t includes? CW'?d? (posts?|notes?)$", command) is not None:
+                            set_setting(c, i.account.acct, "cw", "0")
+                            reply += f"No longer including CW'd posts in the corpus\n\n"
 
-                    elif re.match(r"^don'?t includes? CW'?d? (posts?|notes?)$", command) is not None:
-                        set_setting(c, i.account.acct, "cw", "0")
-                        mastodon.status_post(f"@{i.account.acct} The bot will no longer use posts under CW's", in_reply_to_id=i.status, visibility='direct')
+                        elif re.match(r"^includes? (unlisted|home) (posts?|notes?)$", command) is not None:
+                            set_setting(c, i.account.acct, "unlisted", "1")
+                            reply += f"Now including unlisted posts in the corpus\n\n"
 
-                    elif re.match(r"^includes? (unlisted|home) (posts?|notes?)$", command) is not None:
-                        set_setting(c, i.account.acct, "unlisted", "1")
-                        mastodon.status_post(f"@{i.account.acct} The bot will now take unlisted posts and use them", in_reply_to_id=i.status, visibility='direct')
+                        elif re.match(r"^don'?t includes? (unlisted|home) (posts?|notes?)$", command) is not None:
+                            set_setting(c, i.account.acct, "unlisted", "0")
+                            reply += f"No longer using unlisted posts in the corpus\n\n"
 
-                    elif re.match(r"^don'?t includes? (unlisted|home) (posts?|notes?)$", command) is not None:
-                        set_setting(c, i.account.acct, "unlisted", "0")
-                        mastodon.status_post(f"@{i.account.acct} The bot will no longer use unlisted posts", in_reply_to_id=i.status, visibility='direct')
+                        elif re.match("^(get|list)( settings)?", command) is not None:
+                            cw = get_setting(c, i.account.acct, "cw", "0")
+                            unlisted = get_setting(c, i.account.acct, "unlisted", "0")
 
-                    elif re.match("^(get|list)( settings)?", command) is not None:
-                        cw = get_setting(c, i.account.acct, "cw", "0")
-                        unlisted = get_setting(c, i.account.acct, "unlisted", "0")
+                            reply += f"""Current settings:
+- Include CW'd posts in the corpus: {"yes" if cw == "1" else "no"}
+- Include unlisted posts in the corpus: {"yes" if unlisted == "1" else "no"}
 
-                        mastodon.status_post(f"""@{i.account.acct} Current settings:
-        - Use CW'd posts: {"yes" if cw == "1" else "no"}
-        - Use unlisted posts: {"yes" if unlisted == "1" else "no"}
-        You can change these by asking for help""", in_reply_to_id=i.status, visibility='direct')
+You can change these by asking for help\n\n"""
 
-                    else:
-                        mastodon.status_post(f"@{i.account.acct} Unrecognized command. Please reply to this post with `help` to get help.", in_reply_to_id=i.status, visibility='direct')
+                    if len(reply.strip()) == 0:
+                        reply = "Unknown command(s). Please use `help` to get a list of available commands."
 
+                    mastodon.status_post(f"@{i.account.acct} {reply.strip()}", content_type="text/markdown", in_reply_to_id=i.status, visibility="direct")
 
                     c.execute(
                         insert(responded_dms_table)
