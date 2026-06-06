@@ -10,7 +10,7 @@ import markovify
 import requests
 from dotenv import load_dotenv
 from mastodon import Mastodon
-from sqlalchemy import select, insert, delete, update
+from sqlalchemy import select, insert, delete, update, text
 
 from database import engine, posts_table, follows_table, last_scan_table, responded_dms_table, set_setting, get_setting
 from logger import collabmarkov_logger
@@ -361,6 +361,37 @@ async def post():
             continue
 
 
+async def update_bio():
+    while True:
+
+        with engine.begin() as c:
+            stats = c.execute(
+                text("SELECT COUNT(id), SUM(LENGTH(text)) FROM posts")
+            ).fetchone()
+
+            stats_2 = c.execute(
+                text("SELECT COUNT(id) FROM follows")
+            ).fetchone()
+
+        posts = stats[0]
+        corpus_size = stats[1]
+        users = stats_2[0]
+
+        bio_text = f"""Follow this account to include your posts in its corpus. 
+
+Please report any posts that should have a CW or are bad, either through the instance or by @luna :3
+
+This bot and the server it is on is running purely on donations, if you are enjoying the posts by this bot, please donate! https://ko-fi.com/c4tgirl
+
+Corpus stats:
+Posts: {posts}
+Corpus size: {corpus_size}
+Contributors to the corpus: {users}"""
+
+        mastodon.account_update_credentials(note=bio_text)
+
+        await sleep(3600 * 12)
+
 async def heartbeat():
     while True:
         HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
@@ -375,7 +406,8 @@ async def main():
         heartbeat(),
         followers(),
         post(),
-        commands()
+        commands(),
+        update_bio()
     ]
 
     await gather(*tasks)
