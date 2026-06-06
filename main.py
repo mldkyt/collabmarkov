@@ -172,7 +172,10 @@ async def followers():
                                 delete(follows_table)
                                 .where(follows_table.c.id == str(account.id))
                             )
-
+                            c.execute(
+                                delete(posts_table)
+                                .where((posts_table.c.author == account.acct))
+                            )
                             continue
 
                         while True:
@@ -267,6 +270,7 @@ async def followers():
                             print(f"failed to unfollow {i[0]}: {str(e)}")
                             pass
 
+            print("followers: Finished managing followers, waiting an hour")
             await sleep(300)
         except Exception:
             collabmarkov_logger.exception("When following error occurred")
@@ -338,7 +342,8 @@ async def post():
             if DEBUG:
                 print(output)
             else:
-                mastodon.status_post(output, spoiler_text="Collabmarkov generated post", visibility="unlisted")
+                a = mastodon.status_post(output, spoiler_text="Collabmarkov generated post", visibility="unlisted")
+                print("shitposted: ", a.url)
 
             await sleep(3600)
         except Exception:
