@@ -383,6 +383,8 @@ Please report any posts that should have a CW or are bad, either through the ins
 
 This bot and the server it is on is running purely on donations, if you are enjoying the posts by this bot, please donate! https://ko-fi.com/c4tgirl
 
+:collabmarkov_88x31:
+
 Corpus stats:
 Posts: {posts}
 Corpus size: {corpus_size}
