@@ -158,7 +158,10 @@ async def followers():
                 with engine.begin() as c:
                     rel = mastodon.account_relationships(account)[0]
 
-                    if not rel.following and not rel.requested and not rel.blocked_by:
+                    if not rel.following and not rel.requested and not rel.blocked_by and c.execute(
+                        select(follows_table)
+                        .where(follows_table.c.id == str(account.id))
+                    ) is None:
                         while True:
                             try:
                                 mastodon.account_follow(account, reblogs=False)
