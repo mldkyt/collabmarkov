@@ -402,6 +402,7 @@ async def heartbeat():
             return
 
         requests.post(HEARTBEAT_URL)
+        await sleep(60)
 
 async def main():
     tasks = [
