@@ -108,7 +108,7 @@ async def commands():
                                      f"- `get/list settings` - get current settings\n\n"
                                      f"To use any of the commands, copy and paste them to a reply to this post.\n"
                                      f"\n"
-                                     f"<small>[Donate](https://ko-fi.com/c4tgirl) to help run collabmarkov! -[Luna](https://fedi.mldchan.dev/users/luna)</small>"
+                                     f"<small>[Donate](https://donate.mldkyt.com) to help run collabmarkov! -[mldkyt](https://soc.mldkyt.com/@mldkyt)</small>"
                                       f"\n\n")
 
                         elif re.match(r"^includes? CW'?d? (posts?|notes?)$", command) is not None:
@@ -351,7 +351,7 @@ async def post():
             if DEBUG:
                 print(output)
             else:
-                a = mastodon.status_post(output, spoiler_text="Collabmarkov generated post", visibility="unlisted")
+                a = mastodon.status_post(output, visibility="unlisted")
                 print("shitposted: ", a.url)
 
             await sleep(3600)
@@ -379,9 +379,9 @@ async def update_bio():
 
         bio_text = f"""Follow this account to include your posts in its corpus. 
 
-Please report any posts that should have a CW or are bad, either through the instance or by @luna :3
+Please report any posts that should have a CW or are bad, either through the instance or by DMing @mldkyt :3
 
-This bot and the server it is on is running purely on donations, if you are enjoying the posts by this bot, please donate! https://ko-fi.com/c4tgirl
+This bot and the server it is on is running purely on donations, if you are enjoying the posts by this bot, please donate! https://donate.mldkyt.com
 
 :collabmarkov_88x31:
 
