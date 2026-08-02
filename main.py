@@ -32,9 +32,10 @@ SENTRY_SDK = getenv("SENTRY_SDK")
 
 if SENTRY_SDK is not None:
     sentry_sdk.init(
-        SENTRY_SDK,
+        dsn=SENTRY_SDK,
+        auto_session_tracking=False,
         send_default_pii=True,
-        max_request_body_size="always",
+        # enable_logs=True,  # Opt-in: send logs to GlitchTip (uses disk space)
     )
 
 
