@@ -9,5 +9,6 @@ dependencies = [
     "beautifulsoup4>=4.14.2",
     "markovify>=0.9.4",
     "sqlalchemy>=2.0.44",
-    "psycopg2>=2.9.11"
+    "psycopg2>=2.9.11",
+    "sentry-sdk==3.0.0a7",
 ]

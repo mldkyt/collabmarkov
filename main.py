@@ -8,6 +8,7 @@ from os import getenv
 import bs4
 import markovify
 import requests
+import sentry_sdk
 from dotenv import load_dotenv
 from mastodon import Mastodon
 from sqlalchemy import select, insert, delete, update, text
@@ -26,6 +27,16 @@ REMOVE_MENTIONS = getenv("REMOVE_MENTIONS", "0") == "1"
 REMOVE_HASHTAGS = getenv("REMOVE_HASHTAGS", "0") == "1"
 
 DEBUG = getenv("DEBUG", "0") == "1"
+
+SENTRY_SDK = getenv("SENTRY_SDK")
+
+if SENTRY_SDK is not None:
+    sentry_sdk.init(
+        SENTRY_SDK,
+        send_default_pii=True,
+        max_request_body_size="always",
+    )
+
 
 # borrowed from https://stackoverflow.com/questions/30337528/make-beautifulsoup-handle-line-breaks-as-a-browser-would
 def get_text(tag: bs4.Tag) -> str:
@@ -148,8 +159,8 @@ You can change these by asking for help\n\n"""
                     )
 
             await sleep(10)
-        except Exception:
-            collabmarkov_logger.exception("Error inside replying notifications")
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
             await sleep(300)
             continue
 
@@ -201,6 +212,7 @@ async def followers():
                                                      visibility='direct')
                                 break
                             except Exception as e:
+                                sentry_sdk.capture_exception(e)
                                 print(f"failed to follow {account.acct}: {str(e)}")
                                 print(
                                     f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
@@ -248,6 +260,7 @@ async def followers():
                                 .values(id=str(status.id), text=text, has_cw=has_cw, visibility=status.visibility, author=account.acct)
                             )
                     except Exception as e:
+                        sentry_sdk.capture_exception(e)
                         print(f"failed to query posts for {account.acct}: {str(e)}")
                         pass
 
@@ -276,13 +289,14 @@ async def followers():
                                 )
 
                         except Exception as e:
+                            sentry_sdk.capture_exception(e)
                             print(f"failed to unfollow {i[0]}: {str(e)}")
                             pass
 
             print("followers: Finished managing followers, waiting an hour")
             await sleep(300)
-        except Exception:
-            collabmarkov_logger.exception("When following error occurred")
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
             await sleep(300)
             continue
 
@@ -355,8 +369,8 @@ async def post():
                 print("shitposted: ", a.url)
 
             await sleep(3600)
-        except Exception:
-            collabmarkov_logger.exception("Exception occurred when making post")
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
             await sleep(300)
             continue
 
