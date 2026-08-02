@@ -212,7 +212,6 @@ async def followers():
                                                  f"The behaviour of this can be changed by replying to this post with `help`.",
                                                  visibility='direct')
                             should_scan = True
-                            break
                         except Exception as e:
                             sentry_sdk.capture_exception(e)
                             print(f"failed to follow {account.acct}: {str(e)}")
