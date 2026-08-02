@@ -177,6 +177,7 @@ async def followers():
                     continue
 
                 with engine.begin() as c:
+                    should_scan = False
                     rel = mastodon.account_relationships(account)[0]
 
                     if not rel.following and not rel.requested and not rel.blocked_by:
@@ -199,25 +200,28 @@ async def followers():
                             )
                             continue
 
-                        while True:
-                            try:
-                                mastodon.account_follow(account, reblogs=False)
-                                c.execute(
-                                    insert(follows_table)
-                                    .values(id=account.id, acct=account.acct)
-                                )
-                                mastodon.status_post(f"@{account.acct} Welcome to Collaborative Markov Bot!"
-                                                     f"This bot will now use your posts for the corpus. "
-                                                     f"**Only posts that are public and don't have CW are used.** "
-                                                     f"The behaviour of this can be changed by replying to this post with `help`.",
-                                                     visibility='direct')
-                                break
-                            except Exception as e:
-                                sentry_sdk.capture_exception(e)
-                                print(f"failed to follow {account.acct}: {str(e)}")
-                                print(
-                                    f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
-                                pass
+                        try:
+                            mastodon.account_follow(account, reblogs=False)
+                            c.execute(
+                                insert(follows_table)
+                                .values(id=account.id, acct=account.acct)
+                            )
+                            mastodon.status_post(f"@{account.acct} Welcome to Collaborative Markov Bot!"
+                                                 f"This bot will now use your posts for the corpus. "
+                                                 f"**Only posts that are public and don't have CW are used.** "
+                                                 f"The behaviour of this can be changed by replying to this post with `help`.",
+                                                 visibility='direct')
+                            should_scan = True
+                            break
+                        except Exception as e:
+                            sentry_sdk.capture_exception(e)
+                            print(f"failed to follow {account.acct}: {str(e)}")
+                            print(
+                                f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}")
+
+                    if not should_scan:
+                        print(f"skipping account {account.acct}")
+                        continue
 
                     try:
                         a = c.execute(
