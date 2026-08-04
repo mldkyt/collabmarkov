@@ -11,10 +11,10 @@ import requests
 import sentry_sdk
 from dotenv import load_dotenv
 from mastodon import Mastodon
+from sentry_sdk import capture_exception
 from sqlalchemy import select, insert, delete, update, text
 
 from database import engine, posts_table, follows_table, last_scan_table, responded_dms_table, set_setting, get_setting
-from logger import collabmarkov_logger
 
 load_dotenv()
 
@@ -198,6 +198,30 @@ async def followers():
                                 delete(posts_table)
                                 .where((posts_table.c.author == account.acct))
                             )
+                            continue
+
+                        # Account Move
+                        if account.moved is not None:
+                            try:
+                                new_account = account.moved
+                                while True:
+                                    if new_account.moved is None:
+                                        break
+
+                                    new_account = new_account.moved
+
+                                print("Account migrated", account.acct, "to", new_account.acct)
+                                mastodon.account_remove_from_followers(account)
+
+                                if c.execute(
+                                    select(follows_table)
+                                    .where(follows_table.c.acct == new_account.acct)
+                                ).fetchone() is None:
+                                    print("New account is not following collabmarkov, begging for follow")
+                                    mastodon.status_post(f"Hi @{new_account.acct}! It looks like you moved from {account.acct}. In order for the bot to interact with you, you have to consent by following the bot on your new account.")
+                            except Exception as e:
+                                capture_exception(e)
+
                             continue
 
                         try:
