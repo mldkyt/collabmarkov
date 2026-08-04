@@ -218,7 +218,8 @@ async def followers():
                                     .where(follows_table.c.acct == new_account.acct)
                                 ).fetchone() is None:
                                     print("New account is not following collabmarkov, begging for follow")
-                                    mastodon.status_post(f"Hi @{new_account.acct}! It looks like you moved from {account.acct}. In order for the bot to interact with you, you have to consent by following the bot on your new account.")
+                                    mastodon.status_post(f"Hi @{new_account.acct}! It looks like you moved from {account.acct}. In order for the bot to interact with you, you have to consent by following the bot on your new account.",
+                                                         visibility="private")
                             except Exception as e:
                                 capture_exception(e)
 
