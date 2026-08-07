@@ -15,4 +15,6 @@ COPY auth.py .
 COPY database.py .
 COPY get_me.py .
 
+STOPSIGNAL SIGKILL
+
 ENTRYPOINT ["uv", "run", "main.py"]
