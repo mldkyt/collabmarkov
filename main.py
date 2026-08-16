@@ -489,17 +489,19 @@ async def post():
                 await sleep(60)
                 continue
 
-            posts = "\n".join(posts)
+            posts = " ".join(posts)
 
-            markov = markovify.NewlineText(posts)
-            markov.compile(inplace=True)
-
-            output = None
-            for attempt in range(10000):
-                output = markov.make_sentence()
+            markov = markovify.Text(
+                posts, state_size=3, well_formed=False, retain_original=True
+            ).compile()
+            output = markov.make_sentence(
+                tries=100000,
+                max_overlap_ratio=0.75,
+                max_overlap_total=25,
+            )
 
             if output is None:
-                print("After 10000 attempts no output was made, skipping")
+                print("Skipping iteration")
                 continue
 
             if SANITIZE_MENTIONS:
