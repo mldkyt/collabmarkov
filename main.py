@@ -406,7 +406,17 @@ async def followers():
                 a = c.execute(select(follows_table.c.id, follows_table.c.acct)).all()
 
                 for i in a:
-                    rel = mastodon.account_relationships(i[0])[0]
+                    rel = mastodon.account_relationships(i[0])
+                    if len(rel) == 0:  # Suspended account or something
+                        c.execute(
+                            delete(posts_table).where((posts_table.c.author == i[1]))
+                        )
+                        c.execute(
+                            delete(follows_table).where((follows_table.c.id == i[0]))
+                        )
+                        continue
+
+                    rel = rel[0]
 
                     if not rel.followed_by:
                         try:
@@ -416,17 +426,16 @@ async def followers():
                                 )  # this is not as important as following users
                                 # so we can safely unfollow a user on the second hour
 
-                            with engine.begin() as c:
-                                c.execute(
-                                    delete(posts_table).where(
-                                        (posts_table.c.author == i[1])
-                                    )
+                            c.execute(
+                                delete(posts_table).where(
+                                    (posts_table.c.author == i[1])
                                 )
-                                c.execute(
-                                    delete(follows_table).where(
-                                        (follows_table.c.id == i[0])
-                                    )
+                            )
+                            c.execute(
+                                delete(follows_table).where(
+                                    (follows_table.c.id == i[0])
                                 )
+                            )
 
                         except Exception as e:
                             sentry_sdk.capture_exception(e)
