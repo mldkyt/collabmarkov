@@ -103,23 +103,23 @@ async def commands():
         try:
             notifications = mastodon.notifications(types=["mention"], limit=10)
 
-            with engine.begin() as c:
-                for i in notifications:
-                    if i.status is None or i.account is None:
-                        continue
+            for i in notifications:
+                if i.status is None or i.account is None:
+                    continue
 
-                    if i.status.in_reply_to_id is not None:
-                        post_that_was_replied_to = mastodon.status(
-                            i.status.in_reply_to_id
-                        )
-                        if (
-                            post_that_was_replied_to.visibility != "direct"
-                            and post_that_was_replied_to.account.id != me.id
-                        ):
-                            continue
-                    if i.status.visibility != "direct":
+                if i.status.in_reply_to_id is not None:
+                    post_that_was_replied_to = mastodon.status(
+                        i.status.in_reply_to_id
+                    )
+                    if (
+                        post_that_was_replied_to.visibility != "direct"
+                        and post_that_was_replied_to.account.id != me.id
+                    ):
                         continue
+                if i.status.visibility != "direct":
+                    continue
 
+                with engine.begin() as c:
                     is_replied = (
                         c.execute(
                             select(responded_dms_table).where(
@@ -214,10 +214,10 @@ async def commands():
                             unlisted = get_setting(c, i.account.acct, "unlisted", "0")
 
                             reply += f"""Current settings:
-- Include CW'd posts in the corpus: {"yes" if cw == "1" else "no"}
-- Include unlisted posts in the corpus: {"yes" if unlisted == "1" else "no"}
-
-You can change these by asking for help\n\n"""
+    - Include CW'd posts in the corpus: {"yes" if cw == "1" else "no"}
+    - Include unlisted posts in the corpus: {"yes" if unlisted == "1" else "no"}
+    
+    You can change these by asking for help\n\n"""
 
                     if len(reply.strip()) == 0:
                         reply = "Unknown command(s). Please use `help` to get a list of available commands."
