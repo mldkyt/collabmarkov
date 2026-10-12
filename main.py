@@ -108,9 +108,12 @@ async def commands():
                     continue
 
                 if i.status.in_reply_to_id is not None:
-                    post_that_was_replied_to = mastodon.status(
-                        i.status.in_reply_to_id
-                    )
+                    try:
+                        post_that_was_replied_to = mastodon.status(
+                            i.status.in_reply_to_id
+                        )
+                    except Exception:
+                        continue
                     if (
                         post_that_was_replied_to.visibility != "direct"
                         and post_that_was_replied_to.account.id != me.id
