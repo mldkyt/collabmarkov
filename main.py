@@ -251,7 +251,6 @@ async def followers():
                     continue
 
                 with engine.begin() as c:
-                    should_scan = False
                     rel = mastodon.account_relationships(account)[0]
 
                     if not rel.following and not rel.requested and not rel.blocked_by:
@@ -340,70 +339,6 @@ async def followers():
                             print(
                                 f"rel.following={rel.following} rel.requested={rel.requested} rel.blocked_by={rel.blocked_by}"
                             )
-
-                    if not should_scan:
-                        print(f"skipping account {account.acct}")
-                        continue
-
-                    try:
-                        a = c.execute(
-                            select(last_scan_table.c.last_scan).where(
-                                (last_scan_table.c.id == account.id)
-                            )
-                        ).fetchone()
-                        do_full_scan = False
-                        if a is None:
-                            c.execute(
-                                insert(last_scan_table).values(
-                                    id=account.id, last_scan=datetime.datetime.now()
-                                )
-                            )
-
-                        else:
-                            if (
-                                datetime.datetime.now() - a[0]
-                            ).total_seconds() > 1209600:
-                                do_full_scan = True
-                                c.execute(
-                                    update(last_scan_table)
-                                    .where((last_scan_table.c.id == account.id))
-                                    .values(last_scan=datetime.datetime.now())
-                                )
-
-                        for status in mastodon.pagination_iterator(
-                            mastodon.account_statuses(account, exclude_reblogs=True)
-                        ):
-                            a = c.execute(
-                                select(posts_table.c.id).where(
-                                    (posts_table.c.id == str(status.id))
-                                )
-                            ).fetchone()
-                            if a is not None:
-                                if do_full_scan:
-                                    continue
-                                else:
-                                    break
-
-                            soup = bs4.BeautifulSoup(
-                                status.content, features="html.parser"
-                            )
-                            text = get_text(soup)
-
-                            has_cw = len(status.spoiler_text) > 0
-
-                            c.execute(
-                                insert(posts_table).values(
-                                    id=str(status.id),
-                                    text=text,
-                                    has_cw=has_cw,
-                                    visibility=status.visibility,
-                                    author=account.acct,
-                                )
-                            )
-                    except Exception as e:
-                        sentry_sdk.capture_exception(e)
-                        print(f"failed to query posts for {account.acct}: {str(e)}")
-                        pass
 
             with engine.begin() as c:
                 a = c.execute(select(follows_table.c.id, follows_table.c.acct)).all()
@@ -572,6 +507,44 @@ Contributors to the corpus: {users}"""
         await sleep(3600 * 12)
 
 
+async def pleroma_fetch_posts():
+    # Pleroma works differently: New posts get insterted at the top of the home TL, regardless of the time they were posted. So we can just fetch the home TL and keep going until we hit a post that is in the DB.
+
+    try:
+        this_scan = 0
+
+        for post in mastodon.pagination_iterator(mastodon.timeline_home()):
+            with engine.begin() as c:
+                is_posted = (
+                        c.execute(
+                            select(posts_table).where(posts_table.c.id == str(post.id))
+                        ).fetchone()
+                        is not None
+                )
+
+                if is_posted:
+                    return
+
+                this_scan += 1
+                c.execute(
+                    insert(posts_table).values(
+                        id=str(post.id),
+                        text=get_text(
+                            bs4.BeautifulSoup(post.content, features="html.parser")
+                        ).strip(),
+                        has_cw=post.spoiler_text is not None and len(post.spoiler_text) > 0,
+                        visibility=post.visibility,
+                        author=post.account.acct,
+                    )
+                )
+
+        print("Added", this_scan, "posts from Pleroma home timeline")
+    except Exception as e:
+        sentry_sdk.capture_exception(e)
+        print("Failed to fetch posts from Pleroma home timeline:", str(e))
+        await sleep(300)
+
+
 async def heartbeat():
     while True:
         HEARTBEAT_URL = getenv("HEARTBEAT_URL", "")
@@ -584,7 +557,7 @@ async def heartbeat():
 
 
 async def main():
-    tasks = [heartbeat(), followers(), post(), commands(), update_bio()]
+    tasks = [heartbeat(), followers(), post(), commands(), update_bio(), pleroma_fetch_posts()]
 
     await gather(*tasks)
 
