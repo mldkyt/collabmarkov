@@ -1,7 +1,7 @@
 [project]
 name = "collabmarkov"
 version = "0.1.0"
-description = "Add your description here"
+description = "Collaborative Markov Bot"
 requires-python = ">=3.11"
 dependencies = [
     "Mastodon.py>=2.1.4",
@@ -9,6 +9,5 @@ dependencies = [
     "beautifulsoup4>=4.14.2",
     "markovify>=0.9.4",
     "sqlalchemy>=2.0.44",
-    "psycopg2>=2.9.11",
-    "sentry-sdk==2.66.1",
+    "sentry-sdk==2.73.0",
 ]
