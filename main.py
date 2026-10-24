@@ -514,6 +514,15 @@ async def pleroma_fetch_posts():
         this_scan = 0
 
         for post in mastodon.pagination_iterator(mastodon.timeline_home()):
+            if post.visibility == 'direct' or post.visibility == 'private':
+                continue
+
+            if post.account.acct == me.acct:
+                continue
+
+            if post.reblog is not None:
+                continue
+
             with engine.begin() as c:
                 is_posted = (
                         c.execute(
