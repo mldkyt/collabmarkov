@@ -510,48 +510,51 @@ Contributors to the corpus: {users}"""
 async def pleroma_fetch_posts():
     # Pleroma works differently: New posts get insterted at the top of the home TL, regardless of the time they were posted. So we can just fetch the home TL and keep going until we hit a post that is in the DB.
 
-    try:
-        this_scan = 0
+    while True:
+        try:
+            this_scan = 0
 
-        for post in mastodon.pagination_iterator(mastodon.timeline_home()):
-            if post.visibility == 'direct' or post.visibility == 'private':
-                continue
+            for post in mastodon.pagination_iterator(mastodon.timeline_home()):
+                if post.visibility == 'direct' or post.visibility == 'private':
+                    continue
 
-            if post.account.acct == me.acct:
-                continue
+                if post.account.acct == me.acct:
+                    continue
 
-            if post.reblog is not None:
-                continue
+                if post.reblog is not None:
+                    continue
 
-            with engine.begin() as c:
-                is_posted = (
-                        c.execute(
-                            select(posts_table).where(posts_table.c.id == str(post.id))
-                        ).fetchone()
-                        is not None
-                )
-
-                if is_posted:
-                    return
-
-                this_scan += 1
-                c.execute(
-                    insert(posts_table).values(
-                        id=str(post.id),
-                        text=get_text(
-                            bs4.BeautifulSoup(post.content, features="html.parser")
-                        ).strip(),
-                        has_cw=post.spoiler_text is not None and len(post.spoiler_text) > 0,
-                        visibility=post.visibility,
-                        author=post.account.acct,
+                with engine.begin() as c:
+                    is_posted = (
+                            c.execute(
+                                select(posts_table).where(posts_table.c.id == str(post.id))
+                            ).fetchone()
+                            is not None
                     )
-                )
 
-        print("Added", this_scan, "posts from Pleroma home timeline")
-    except Exception as e:
-        sentry_sdk.capture_exception(e)
-        print("Failed to fetch posts from Pleroma home timeline:", str(e))
-        await sleep(300)
+                    if is_posted:
+                        break
+
+                    this_scan += 1
+                    c.execute(
+                        insert(posts_table).values(
+                            id=str(post.id),
+                            text=get_text(
+                                bs4.BeautifulSoup(post.content, features="html.parser")
+                            ).strip(),
+                            has_cw=post.spoiler_text is not None and len(post.spoiler_text) > 0,
+                            visibility=post.visibility,
+                            author=post.account.acct,
+                        )
+                    )
+
+            print("Added", this_scan, "posts from Pleroma home timeline")
+
+            await sleep(60)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            print("Failed to fetch posts from Pleroma home timeline:", str(e))
+            await sleep(300)
 
 
 async def heartbeat():
